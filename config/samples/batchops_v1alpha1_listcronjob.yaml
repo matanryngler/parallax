@@ -1,4 +1,4 @@
-apiVersion: batchops.batchops.io/v1alpha1
+apiVersion: batchops.io/v1alpha1
 kind: ListCronJob
 metadata:
   labels:

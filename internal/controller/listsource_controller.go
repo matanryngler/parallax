@@ -33,9 +33,9 @@ type ListSourceReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=batchops.batchops.io,resources=listsources,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=batchops.batchops.io,resources=listsources/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=batchops.batchops.io,resources=listsources/finalizers,verbs=update
+// +kubebuilder:rbac:groups=batchops.io,resources=listsources,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=batchops.io,resources=listsources/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=batchops.io,resources=listsources/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

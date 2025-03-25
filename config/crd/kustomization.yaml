@@ -2,9 +2,9 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/batchops.batchops.io_listjobs.yaml
-- bases/batchops.batchops.io_listsources.yaml
-- bases/batchops.batchops.io_listcronjobs.yaml
+- bases/batchops.io_listjobs.yaml
+- bases/batchops.io_listcronjobs.yaml
+- bases/batchops.io_listsources.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

@@ -1,0 +1,9 @@
+apiVersion: batchops.batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  labels:
+    app.kubernetes.io/name: parallax
+    app.kubernetes.io/managed-by: kustomize
+  name: listjob-sample
+spec:
+  # TODO(user): Add fields here

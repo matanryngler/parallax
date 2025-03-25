@@ -1,0 +1,35 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - batchops.batchops.io
+  resources:
+  - listcronjobs
+  - listsources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batchops.batchops.io
+  resources:
+  - listcronjobs/finalizers
+  - listsources/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - batchops.batchops.io
+  resources:
+  - listcronjobs/status
+  - listsources/status
+  verbs:
+  - get
+  - patch
+  - update

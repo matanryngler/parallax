@@ -1,0 +1,6 @@
+## Append samples of your project ##
+resources:
+- batchops_v1alpha1_listjob.yaml
+- batchops_v1alpha1_listsource.yaml
+- batchops_v1alpha1_listcronjob.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

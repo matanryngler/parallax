@@ -1,0 +1,9 @@
+apiVersion: batchops.batchops.io/v1alpha1
+kind: ListCronJob
+metadata:
+  labels:
+    app.kubernetes.io/name: parallax
+    app.kubernetes.io/managed-by: kustomize
+  name: listcronjob-sample
+spec:
+  # TODO(user): Add fields here

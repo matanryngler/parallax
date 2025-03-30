@@ -25,15 +25,14 @@ const listJobFinalizer = "listjob.batchops.io/finalizer"
 
 func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
-	log.Info("Reconciling ListJob", 
-		"name", req.Name, 
+	log.Info("Reconciling ListJob",
+		"name", req.Name,
 		"namespace", req.Namespace,
 		"generation", listJob.Generation,
 		"resourceVersion", listJob.ResourceVersion,
 		"deletionTimestamp", listJob.DeletionTimestamp,
 		"finalizers", listJob.Finalizers,
 	)
-
 
 	var listJob batchopsv1alpha1.ListJob
 	if err := r.Get(ctx, req.NamespacedName, &listJob); err != nil {
@@ -121,6 +120,11 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	envName := listJob.Spec.Template.EnvName
+	if envName == "" {
+		envName = "ITEM"
+	}
+
 	podSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -140,7 +144,7 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			{
 				Name:    "init",
 				Image:   "busybox",
-				Command: []string{"sh", "-c", "ITEM=$(cut -d',' -f$((`echo $JOB_COMPLETION_INDEX`+1)) /list/items.txt); echo \"export ITEM=$ITEM\" > /shared/env.sh"},
+				Command: []string{"sh", "-c", fmt.Sprintf("VAL=$(cut -d',' -f$((`echo $JOB_COMPLETION_INDEX`+1)) /list/items.txt); echo \"export %s=$VAL\" > /shared/env.sh", envName)},
 				Env: []corev1.EnvVar{
 					{
 						Name: "JOB_COMPLETION_INDEX",

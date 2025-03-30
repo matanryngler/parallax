@@ -28,10 +28,6 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	log.Info("Reconciling ListJob",
 		"name", req.Name,
 		"namespace", req.Namespace,
-		"generation", listJob.Generation,
-		"resourceVersion", listJob.ResourceVersion,
-		"deletionTimestamp", listJob.DeletionTimestamp,
-		"finalizers", listJob.Finalizers,
 	)
 
 	var listJob batchopsv1alpha1.ListJob
@@ -43,6 +39,13 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		log.Error(err, "Failed to get ListJob")
 		return ctrl.Result{}, err
 	}
+
+	log.Info("Reconciling ListJob details",
+		"generation", listJob.Generation,
+		"resourceVersion", listJob.ResourceVersion,
+		"deletionTimestamp", listJob.DeletionTimestamp,
+		"finalizers", listJob.Finalizers,
+	)
 
 	if !listJob.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(&listJob, listJobFinalizer) {

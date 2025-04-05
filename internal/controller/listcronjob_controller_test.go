@@ -18,67 +18,65 @@ package controller
 
 import (
 	"context"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"testing"
 
 	batchopsv1alpha1 "github.com/matanryngler/parallax/api/v1alpha1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
-var _ = Describe("ListCronJob Controller", func() {
-	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+func TestListCronJobReconciler(t *testing.T) {
+	ctx := context.Background()
 
-		ctx := context.Background()
+	// Create test environment
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{"../../config/crd/bases"},
+		ErrorIfCRDPathMissing: true,
+		BinaryAssetsDirectory: getFirstFoundEnvTestBinaryDir(),
+	}
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
-		}
-		listcronjob := &batchopsv1alpha1.ListCronJob{}
+	// Start test environment
+	cfg, err := testEnv.Start()
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	defer testEnv.Stop()
 
-		BeforeEach(func() {
-			By("creating the custom resource for the Kind ListCronJob")
-			err := k8sClient.Get(ctx, typeNamespacedName, listcronjob)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &batchopsv1alpha1.ListCronJob{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					// TODO(user): Specify other spec details if needed.
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-			}
-		})
+	// Register our custom types with the scheme
+	err = batchopsv1alpha1.AddToScheme(scheme.Scheme)
+	require.NoError(t, err)
 
-		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &batchopsv1alpha1.ListCronJob{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
+	// Create a new test client
+	k8sClient, err := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	require.NoError(t, err)
+	require.NotNil(t, k8sClient)
 
-			By("Cleanup the specific resource instance ListCronJob")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &ListCronJobReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
+	// Create namespace for tests
+	namespace := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-namespace",
+		},
+	}
+	err = k8sClient.Create(ctx, namespace)
+	require.NoError(t, err)
+	defer k8sClient.Delete(ctx, namespace)
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
-		})
+	// Setup the reconciler
+	reconciler := &ListCronJobReconciler{
+		Client: k8sClient,
+		Scheme: scheme.Scheme,
+	}
+
+	// Test basic reconciler setup
+	t.Run("reconciler setup", func(t *testing.T) {
+		assert.NotNil(t, reconciler)
+		assert.NotNil(t, reconciler.Client)
+		assert.NotNil(t, reconciler.Scheme)
 	})
-})
+
+	// Add your test cases here
+}

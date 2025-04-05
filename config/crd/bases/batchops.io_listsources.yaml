@@ -14,7 +14,20 @@ spec:
     singular: listsource
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .status.itemCount
+      name: Items
+      type: integer
+    - jsonPath: .status.lastUpdateTime
+      name: Last Update
+      type: date
+    - jsonPath: .status.error
+      name: Error
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         properties:
@@ -28,21 +41,102 @@ spec:
             properties:
               api:
                 properties:
+                  auth:
+                    properties:
+                      passwordKey:
+                        type: string
+                      secretRef:
+                        properties:
+                          key:
+                            type: string
+                          name:
+                            type: string
+                          namespace:
+                            type: string
+                        required:
+                        - key
+                        - name
+                        type: object
+                      type:
+                        enum:
+                        - basic
+                        - bearer
+                        type: string
+                      usernameKey:
+                        type: string
+                    required:
+                    - passwordKey
+                    - secretRef
+                    - type
+                    - usernameKey
+                    type: object
                   headers:
                     additionalProperties:
                       type: string
                     type: object
+                  jsonPath:
+                    type: string
                   url:
                     type: string
                 required:
+                - jsonPath
                 - url
                 type: object
               intervalSeconds:
+                minimum: 1
                 type: integer
+              postgres:
+                properties:
+                  auth:
+                    properties:
+                      passwordKey:
+                        type: string
+                      secretRef:
+                        properties:
+                          key:
+                            type: string
+                          name:
+                            type: string
+                          namespace:
+                            type: string
+                        required:
+                        - key
+                        - name
+                        type: object
+                    required:
+                    - passwordKey
+                    - secretRef
+                    type: object
+                  connectionString:
+                    type: string
+                  query:
+                    type: string
+                required:
+                - connectionString
+                - query
+                type: object
+              staticList:
+                items:
+                  type: string
+                type: array
               type:
+                enum:
+                - static
+                - api
+                - postgresql
                 type: string
             required:
             - type
+            type: object
+          status:
+            properties:
+              error:
+                type: string
+              itemCount:
+                type: integer
+              lastUpdateTime:
+                format: date-time
+                type: string
             type: object
         type: object
     served: true

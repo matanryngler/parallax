@@ -32,12 +32,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/jsonpath"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/PaesslerAG/jsonpath"
 	_ "github.com/lib/pq" // PostgreSQL driver
 	batchopsv1alpha1 "github.com/matanryngler/parallax/api/v1alpha1"
 )
@@ -335,6 +335,9 @@ func (r *ListSourceReconciler) getItemsFromAPI(ctx context.Context, listSource *
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
+	// Log the response body for debugging
+	log.V(1).Info("Received API response", "body", string(body))
+
 	// Parse JSON response
 	var data interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
@@ -344,37 +347,40 @@ func (r *ListSourceReconciler) getItemsFromAPI(ctx context.Context, listSource *
 
 	// Evaluate JSONPath expression
 	log.V(1).Info("Extracting items using JSONPath", "expression", listSource.Spec.API.JSONPath)
-	eval, err := jsonpath.New(listSource.Spec.API.JSONPath)
-	if err != nil {
+	jp := jsonpath.New("items")
+	if err := jp.Parse(fmt.Sprintf("{%s}", listSource.Spec.API.JSONPath)); err != nil {
 		log.Error(err, "Invalid JSONPath expression")
 		return nil, fmt.Errorf("failed to parse JSONPath expression: %w", err)
 	}
 
-	var result interface{}
-	if err := eval.Eval(data, &result); err != nil {
+	values, err := jp.FindResults(data)
+	if err != nil {
 		log.Error(err, "Failed to evaluate JSONPath against response")
 		return nil, fmt.Errorf("failed to evaluate JSONPath: %w", err)
 	}
 
-	// Convert result to []string
+	if len(values) == 0 || len(values[0]) == 0 {
+		log.Error(nil, "JSONPath expression returned no results")
+		return nil, fmt.Errorf("JSONPath expression returned no results")
+	}
+
+	// Convert results to []string
 	var items []string
-	switch v := result.(type) {
-	case []interface{}:
-		for _, item := range v {
-			switch str := item.(type) {
-			case string:
-				items = append(items, str)
-			default:
-				items = append(items, fmt.Sprintf("%v", str))
+	for _, value := range values[0] {
+		switch v := value.Interface().(type) {
+		case string:
+			items = append(items, v)
+		case []interface{}:
+			for _, item := range v {
+				if str, ok := item.(string); ok {
+					items = append(items, str)
+				} else {
+					items = append(items, fmt.Sprintf("%v", item))
+				}
 			}
+		default:
+			items = append(items, fmt.Sprintf("%v", v))
 		}
-	case []string:
-		items = v
-	case string:
-		items = []string{v}
-	default:
-		log.Error(nil, "JSONPath result has unexpected type", "type", fmt.Sprintf("%T", result))
-		return nil, fmt.Errorf("JSONPath result is not a string or array: %T", result)
 	}
 
 	log.Info("Successfully processed API response", "items_found", len(items))
@@ -405,29 +411,39 @@ func (r *ListSourceReconciler) getItemsFromPostgres(ctx context.Context, config 
 		password = secretData[config.Auth.PasswordKey]
 	}
 
-	// Build connection string
-	connStr := config.ConnectionString
-	if !strings.Contains(connStr, "password=") && password != "" {
-		connStr = fmt.Sprintf("%s password=REDACTED", connStr)
-		log.V(1).Info("Added password to connection string")
-	}
-	if !strings.Contains(connStr, "sslmode=") {
-		connStr = fmt.Sprintf("%s sslmode=disable", connStr)
-		log.V(1).Info("Set SSL mode to disabled")
-	}
-	if !strings.Contains(connStr, "connect_timeout=") {
-		connStr = fmt.Sprintf("%s connect_timeout=10", connStr)
-		log.V(1).Info("Set connection timeout to 10 seconds")
-	}
+	// Check if we have a mock DB in the context (for testing)
+	type dbKeyType string
+	const dbKey dbKeyType = "db"
+	var db *sql.DB
+	if mockDB, ok := ctx.Value(dbKey).(*sql.DB); ok {
+		log.V(1).Info("Using mock database from context")
+		db = mockDB
+	} else {
+		// Build connection string
+		connStr := config.ConnectionString
+		if !strings.Contains(connStr, "password=") && password != "" {
+			connStr = fmt.Sprintf("%s password=REDACTED", connStr)
+			log.V(1).Info("Added password to connection string")
+		}
+		if !strings.Contains(connStr, "sslmode=") {
+			connStr = fmt.Sprintf("%s sslmode=disable", connStr)
+			log.V(1).Info("Set SSL mode to disabled")
+		}
+		if !strings.Contains(connStr, "connect_timeout=") {
+			connStr = fmt.Sprintf("%s connect_timeout=10", connStr)
+			log.V(1).Info("Set connection timeout to 10 seconds")
+		}
 
-	// Open database connection
-	log.V(1).Info("Establishing database connection")
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Error(err, "Failed to establish database connection")
-		return nil, fmt.Errorf("failed to open database connection: %w", err)
+		// Open database connection
+		log.V(1).Info("Establishing database connection")
+		var err error
+		db, err = sql.Open("postgres", connStr)
+		if err != nil {
+			log.Error(err, "Failed to establish database connection")
+			return nil, fmt.Errorf("failed to open database connection: %w", err)
+		}
+		defer db.Close()
 	}
-	defer db.Close()
 
 	// Verify connection
 	log.V(1).Info("Verifying database connection")

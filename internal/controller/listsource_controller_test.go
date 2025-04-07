@@ -22,7 +22,6 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -462,17 +461,13 @@ func TestListSourceReconciler_PostgreSQL(t *testing.T) {
 		Recorder: &record.FakeRecorder{},
 	}
 
-	// Override sql.Open to return our mock DB
-	originalOpen := sql.Open
-	sql.Open = func(driverName, dataSourceName string) (*sql.DB, error) {
-		return db, nil
-	}
-	defer func() {
-		sql.Open = originalOpen
-	}()
+	// Create a test context with the mock DB
+	type dbKeyType string
+	const dbKey dbKeyType = "db"
+	ctx := context.WithValue(context.Background(), dbKey, db)
 
 	// Test getItemsFromPostgres
-	items, err := reconciler.getItemsFromPostgres(context.Background(), listSource.Spec.Postgres, listSource.Namespace)
+	items, err := reconciler.getItemsFromPostgres(ctx, listSource.Spec.Postgres, listSource.Namespace)
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"apple", "banana", "orange"}, items)
 

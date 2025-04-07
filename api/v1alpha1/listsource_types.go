@@ -23,29 +23,93 @@ import (
 type ListSourceType string
 
 const (
-	StaticList ListSourceType = "static"
-	APIList    ListSourceType = "api"
+	StaticList   ListSourceType = "static"
+	APIList      ListSourceType = "api"
+	PostgresList ListSourceType = "postgresql"
+)
+
+// +kubebuilder:validation:Enum=basic;bearer
+type APIAuthType string
+
+const (
+	BasicAuth  APIAuthType = "basic"
+	BearerAuth APIAuthType = "bearer"
 )
 
 type APIConfig struct {
+	// +kubebuilder:validation:Required
 	URL     string            `json:"url"`
 	Headers map[string]string `json:"headers,omitempty"`
+	Auth    *APIAuth          `json:"auth,omitempty"`
+	// +kubebuilder:validation:Required
+	JSONPath string `json:"jsonPath,omitempty"`
+}
+
+type APIAuth struct {
+	// +kubebuilder:validation:Required
+	Type APIAuthType `json:"type"`
+	// +kubebuilder:validation:Required
+	SecretRef SecretRef `json:"secretRef"`
+	// +kubebuilder:validation:Required
+	UsernameKey string `json:"usernameKey,omitempty"`
+	// +kubebuilder:validation:Required
+	PasswordKey string `json:"passwordKey,omitempty"`
+}
+
+type PostgresConfig struct {
+	// +kubebuilder:validation:Required
+	ConnectionString string `json:"connectionString"`
+	// +kubebuilder:validation:Required
+	Query string        `json:"query"`
+	Auth  *PostgresAuth `json:"auth,omitempty"`
+}
+
+type PostgresAuth struct {
+	// +kubebuilder:validation:Required
+	SecretRef SecretRef `json:"secretRef"`
+	// +kubebuilder:validation:Required
+	PasswordKey string `json:"passwordKey"`
+}
+
+type SecretRef struct {
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+	// +kubebuilder:validation:Optional
+	Namespace string `json:"namespace,omitempty"`
+	// +kubebuilder:validation:Required
+	Key string `json:"key"`
 }
 
 type ListSourceSpec struct {
-	Type            ListSourceType `json:"type"`
-	IntervalSeconds int            `json:"intervalSeconds,omitempty"`
-	API             *APIConfig     `json:"api,omitempty"`
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=static;api;postgresql
+	Type ListSourceType `json:"type"`
+	// +kubebuilder:validation:Minimum=1
+	IntervalSeconds int             `json:"intervalSeconds,omitempty"`
+	API             *APIConfig      `json:"api,omitempty"`
+	Postgres        *PostgresConfig `json:"postgres,omitempty"`
+	StaticList      []string        `json:"staticList,omitempty"`
+}
+
+type ListSourceStatus struct {
+	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
+	ItemCount      int          `json:"itemCount,omitempty"`
+	Error          string       `json:"error,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-
+// +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"
+// +kubebuilder:printcolumn:name="Items",type="integer",JSONPath=".status.itemCount"
+// +kubebuilder:printcolumn:name="Last Update",type="date",JSONPath=".status.lastUpdateTime"
+// +kubebuilder:printcolumn:name="Error",type="string",JSONPath=".status.error"
+// +kubebuilder:validation:Required
 type ListSource struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec ListSourceSpec `json:"spec,omitempty"`
+	Spec   ListSourceSpec   `json:"spec,omitempty"`
+	Status ListSourceStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -22,6 +22,12 @@ COPY main.go main.go
 COPY api/ api/
 COPY internal/ internal/
 
+# Test stage
+FROM builder AS test
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go test ./...
+
 # Build
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

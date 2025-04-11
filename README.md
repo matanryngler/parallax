@@ -36,26 +36,29 @@ Parallax is a Kubernetes operator that provides a flexible way to process lists 
 - kubectl configured to communicate with your cluster
 - cert-manager installed (for webhook certificates)
 
-### Using Operator Lifecycle Manager (OLM)
+### Installation
 
-```bash
-# Create the OperatorGroup
-kubectl apply -f deploy/olm/operatorgroup.yaml
-
-# Create the Subscription
-kubectl apply -f deploy/olm/subscription.yaml
-```
-
-### Manual Installation
+The operator can be installed using kustomize:
 
 ```bash
 # Install CRDs
-kubectl apply -f deploy/crds/batchops.io_listsources.yaml
-kubectl apply -f deploy/crds/batchops.io_listjobs.yaml
-kubectl apply -f deploy/crds/batchops.io_listcronjobs.yaml
+kubectl apply -k config/crd
 
-# Install operator
-kubectl apply -f deploy/operator.yaml
+# Install RBAC
+kubectl apply -k config/rbac
+
+# Install manager
+kubectl apply -k config/manager
+```
+
+Alternatively, you can use the Makefile:
+
+```bash
+# Install everything
+make install
+
+# Deploy the operator
+make deploy
 ```
 
 ## Usage

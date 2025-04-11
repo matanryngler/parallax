@@ -1,56 +1,37 @@
-# Build stage
-FROM --platform=$BUILDPLATFORM docker.io/golang:1.20 AS builder
+# Build the manager binary
+FROM --platform=$BUILDPLATFORM golang:1.23 as builder
 
-# Set build arguments
 ARG TARGETOS
 ARG TARGETARCH
-ARG VERSION=unknown
-ARG COMMIT=unknown
-ARG DATE=unknown
+ARG VERSION
+ARG COMMIT
+ARG DATE
 
-# Set build environment
-ENV CGO_ENABLED=0
-ENV GOOS=${TARGETOS:-linux}
-ENV GOARCH=${TARGETARCH}
-
-# Set working directory
 WORKDIR /workspace
-
-# Copy dependency files
+# Copy the Go Modules manifests
 COPY go.mod go.mod
 COPY go.sum go.sum
-
-# Download dependencies
+# cache deps before building and copying source so that we don't need to re-download as much
+# and so that source changes don't invalidate our downloaded layer
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go mod download
 
-# Copy source code
-COPY . .
+# Copy the go source
+COPY main.go main.go
+COPY api/ api/
+COPY internal/ internal/
 
-# Build the binary
+# Build
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -a \
-    -ldflags "-X 'main.version=${VERSION}' \
-              -X 'main.commit=${COMMIT}' \
-              -X 'main.date=${DATE}'" \
-    -o manager cmd/main.go
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" -o manager main.go
 
-# Test stage
-FROM builder AS test
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go test ./...
-
-# Production stage
-FROM --platform=$TARGETPLATFORM gcr.io/distroless/static:nonroot
-
-# Copy the binary from builder
-COPY --from=builder /workspace/manager /manager
-
-# Set non-root user
+# Use distroless as minimal base image to package the manager binary
+# Refer to https://github.com/GoogleContainerTools/distroless for more details
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /
+COPY --from=builder /workspace/manager .
 USER 65532:65532
 
-# Set entrypoint
 ENTRYPOINT ["/manager"]

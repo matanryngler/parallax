@@ -163,36 +163,41 @@ func (r *ListSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Creating new ConfigMap to store items", "target", cmID)
+			// Join items with newlines
+			itemsStr := strings.Join(items, "\n")
+
 			cm = &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      listSource.Name,
 					Namespace: listSource.Namespace,
 				},
 				Data: map[string]string{
-					"items": strings.Join(items, ","),
+					"items": itemsStr,
 				},
 			}
 			if err := ctrl.SetControllerReference(&listSource, cm, r.Scheme); err != nil {
 				log.Error(err, "Unable to set owner reference on ConfigMap", "target", cmID)
-				return result, err
+				return ctrl.Result{}, err
 			}
 			if err := r.Create(ctx, cm); err != nil {
 				log.Error(err, "Failed to create ConfigMap", "target", cmID)
-				return result, err
+				return ctrl.Result{}, err
 			}
 			log.Info("Successfully created ConfigMap with items", "target", cmID)
 		} else {
 			log.Error(err, "Unable to check if ConfigMap exists", "target", cmID)
-			return result, err
+			return ctrl.Result{}, err
 		}
 	} else {
 		// Check if ConfigMap data needs to be updated
-		newItemsStr := strings.Join(items, ",")
+		// Join new items with newlines
+		newItemsStr := strings.Join(items, "\n")
+
 		if currentItemsStr := cm.Data["items"]; currentItemsStr != newItemsStr {
 			log.Info("Updating existing ConfigMap with new items",
 				"target", cmID,
 				"current_version", cm.ResourceVersion,
-				"old_items_count", len(strings.Split(currentItemsStr, ",")),
+				"old_items_count", len(strings.Split(currentItemsStr, "\n")),
 				"new_items_count", len(items),
 			)
 			cm.Data = map[string]string{
@@ -200,7 +205,7 @@ func (r *ListSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			}
 			if err := r.Update(ctx, cm); err != nil {
 				log.Error(err, "Failed to update ConfigMap with new items", "target", cmID)
-				return result, err
+				return ctrl.Result{}, err
 			}
 			log.Info("Successfully updated ConfigMap with new items",
 				"target", cmID,

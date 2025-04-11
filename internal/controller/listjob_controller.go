@@ -93,24 +93,39 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	var list []string
 	if len(listJob.Spec.StaticList) > 0 {
 		list = listJob.Spec.StaticList
-	} else {
-		var cm corev1.ConfigMap
-		err := r.Get(ctx, client.ObjectKey{Name: listJob.Spec.ListSourceRef, Namespace: req.Namespace}, &cm)
-		if err != nil {
-			log.Error(err, "Failed to fetch ListSource ConfigMap")
+	} else if listJob.Spec.ListSourceRef != "" {
+		// Get the ListSource's ConfigMap
+		var listSourceCM corev1.ConfigMap
+		if err := r.Get(ctx, client.ObjectKey{Name: listJob.Spec.ListSourceRef, Namespace: req.Namespace}, &listSourceCM); err != nil {
+			log.Error(err, "Failed to get ListSource ConfigMap", "configMap", listJob.Spec.ListSourceRef)
 			return ctrl.Result{}, err
 		}
-		listStr := cm.Data["items"]
-		list = strings.Split(listStr, ",")
+
+		// Parse the items from the ConfigMap
+		itemsStr := listSourceCM.Data["items"]
+		if itemsStr == "" {
+			log.Error(nil, "ListSource ConfigMap has no items", "configMap", listJob.Spec.ListSourceRef)
+			return ctrl.Result{}, fmt.Errorf("ListSource ConfigMap has no items")
+		}
+
+		// Split by newlines and trim whitespace
+		list = strings.Split(itemsStr, "\n")
+		for i, item := range list {
+			list[i] = strings.TrimSpace(item)
+		}
+	} else {
+		log.Error(nil, "Neither StaticList nor ListSourceRef specified")
+		return ctrl.Result{}, fmt.Errorf("either StaticList or ListSourceRef must be specified")
 	}
 
+	// Create ConfigMap with newline-separated items
 	jobCm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-list", listJob.Name),
 			Namespace: req.Namespace,
 		},
 		Data: map[string]string{
-			"items.txt": strings.Join(list, ","),
+			"items": strings.Join(list, "\n"),
 		},
 	}
 	if err := ctrl.SetControllerReference(&listJob, jobCm, r.Scheme); err != nil {
@@ -145,9 +160,16 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		},
 		InitContainers: []corev1.Container{
 			{
-				Name:    "init",
-				Image:   "busybox",
-				Command: []string{"sh", "-c", fmt.Sprintf("VAL=$(cut -d',' -f$((`echo $JOB_COMPLETION_INDEX`+1)) /list/items.txt); echo \"export %s=$VAL\" > /shared/env.sh", envName)},
+				Name:  "init",
+				Image: "busybox",
+				Command: []string{"sh", "-c", fmt.Sprintf(`
+					# Read the items file
+					ITEMS=$(cat /list/items)
+					# Get the item at the given index (0-based)
+					VAL=$(echo "$ITEMS" | sed -n "$((JOB_COMPLETION_INDEX+1))p")
+					# Export the value
+					echo "export %s=$VAL" > /shared/env.sh
+				`, envName)},
 				Env: []corev1.EnvVar{
 					{
 						Name: "JOB_COMPLETION_INDEX",
@@ -210,7 +232,6 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{RequeueAfter: listJob.Spec.DeleteAfter.Duration}, nil
 	}
 	return ctrl.Result{}, nil
-
 }
 
 func (r *ListJobReconciler) SetupWithManager(mgr ctrl.Manager) error {

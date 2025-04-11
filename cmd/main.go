@@ -202,6 +202,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&controller.ListSourceReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("listsource-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ListSource")
+		os.Exit(1)
+	}
+
 	if err = (&controller.ListJobReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -209,20 +218,14 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ListJob")
 		os.Exit(1)
 	}
-	if err = (&controller.ListSourceReconciler{
+
+	if err = (&controller.ListCronJobReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ListSource")
+		setupLog.Error(err, "unable to create controller", "controller", "ListCronJob")
 		os.Exit(1)
 	}
-	// if err = (&controller.ListCronJobReconciler{
-	// 	Client: mgr.GetClient(),
-	// 	Scheme: mgr.GetScheme(),
-	// }).SetupWithManager(mgr); err != nil {
-	// 	setupLog.Error(err, "unable to create controller", "controller", "ListCronJob")
-	// 	os.Exit(1)
-	// }
 	// +kubebuilder:scaffold:builder
 
 	if metricsCertWatcher != nil {

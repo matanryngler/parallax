@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -25,17 +27,23 @@ import (
 
 // ListCronJobSpec defines the desired state of ListCronJob.
 type ListCronJobSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of ListCronJob. Edit listcronjob_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	ListSourceRef              string                    `json:"listSourceRef,omitempty"`
+	StaticList                 []string                  `json:"staticList,omitempty"`
+	Parallelism                int32                     `json:"parallelism"`
+	Template                   JobTemplateSpec           `json:"template"`
+	TTLSecondsAfterFinished    *int32                    `json:"ttlSecondsAfterFinished,omitempty"`
+	Schedule                   string                    `json:"schedule"`
+	ConcurrencyPolicy          batchv1.ConcurrencyPolicy `json:"concurrencyPolicy,omitempty"`
+	StartingDeadlineSeconds    *int64                    `json:"startingDeadlineSeconds,omitempty"`
+	SuccessfulJobsHistoryLimit *int32                    `json:"successfulJobsHistoryLimit,omitempty"`
+	FailedJobsHistoryLimit     *int32                    `json:"failedJobsHistoryLimit,omitempty"`
+	Suspend                    *bool                     `json:"suspend,omitempty"`
 }
 
 // ListCronJobStatus defines the observed state of ListCronJob.
 type ListCronJobStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	Active           []corev1.ObjectReference `json:"active,omitempty"`
+	LastScheduleTime *metav1.Time             `json:"lastScheduleTime,omitempty"`
 }
 
 // +kubebuilder:object:root=true

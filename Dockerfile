@@ -13,6 +13,16 @@ COPY internal/ internal/
 
 # Test stage (runs BEFORE build)
 FROM base AS test
+# Install kubebuilder
+RUN curl -L -o kubebuilder https://github.com/kubernetes-sigs/kubebuilder/releases/download/v3.14.1/kubebuilder_linux_amd64 && \
+    chmod +x kubebuilder && \
+    mv kubebuilder /usr/local/bin/
+
+# Install PostgreSQL client
+RUN apt-get update && \
+    apt-get install -y postgresql-client && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go test -v ./...

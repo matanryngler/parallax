@@ -174,3 +174,41 @@ mv $(1) $(1)-$(3) ;\
 } ;\
 ln -sf $(1)-$(3) $(1)
 endef
+
+##@ Helm
+
+.PHONY: helm-init
+helm-init: ## Initialize Helm chart directory structure
+	@mkdir -p charts/parallax/{crds,generated,templates}
+
+.PHONY: helm-crds
+helm-crds: manifests ## Generate and sync CRDs to Helm chart
+	@echo "Generating and syncing CRDs to Helm chart..."
+	@mkdir -p charts/parallax/crds
+	@cp -r config/crd/bases/* charts/parallax/crds/
+
+.PHONY: helm-rbac-rules
+helm-rbac-rules: manifests ## Generate and sync RBAC rules to Helm chart
+	@echo "Generating and syncing RBAC rules to Helm chart..."
+	@mkdir -p charts/parallax/generated
+	@yq eval '.rules' config/rbac/role.yaml > charts/parallax/generated/rbac-rules.yaml
+
+.PHONY: helm-generate
+helm-generate: helm-init helm-crds helm-rbac-rules ## Generate all Helm chart components
+	@echo "Helm chart generation complete!"
+
+.PHONY: helm-clean
+helm-clean: ## Clean generated Helm chart files
+	@echo "Cleaning generated Helm chart files..."
+	@rm -rf charts/parallax/crds/*
+	@rm -rf charts/parallax/generated/*
+
+.PHONY: helm-lint
+helm-lint: ## Lint Helm chart
+	@echo "Linting Helm chart..."
+	@helm lint ./charts/parallax
+
+.PHONY: helm-template
+helm-template: ## Template Helm chart
+	@echo "Templating Helm chart..."
+	@helm template ./charts/parallax

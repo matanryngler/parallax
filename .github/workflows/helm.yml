@@ -1,0 +1,41 @@
+name: Helm Chart Validation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'charts/**'
+      - 'api/**'
+      - 'internal/controller/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'charts/**'
+      - 'api/**'
+      - 'internal/controller/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.14.0
+
+      - name: Set up yq
+        uses: mikefarah/yq@master
+
+      - name: Generate Helm chart
+        run: make helm-generate
+
+      - name: Lint Helm chart
+        run: make helm-lint
+
+      - name: Template Helm chart
+        run: make helm-template 

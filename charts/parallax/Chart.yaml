@@ -1,0 +1,9 @@
+apiVersion: v2
+name: parallax
+description: A Helm chart for deploying the Parallax Operator
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+maintainers:
+  - name: Matan Ryngler
+    email: matan@example.com 

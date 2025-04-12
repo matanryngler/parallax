@@ -32,10 +32,36 @@ jobs:
         uses: mikefarah/yq@master
 
       - name: Generate Helm chart
-        run: make helm-generate
+        run: |
+          if ! make helm-generate; then
+            echo "::error::Failed to generate Helm chart. Run 'make helm-generate' locally to fix."
+            exit 1
+          fi
 
       - name: Lint Helm chart
-        run: make helm-lint
+        run: |
+          if ! make helm-lint; then
+            echo "::error::Helm chart linting failed. Run 'make helm-lint' locally to see the issues."
+            exit 1
+          fi
 
       - name: Template Helm chart
-        run: make helm-template 
+        run: |
+          if ! make helm-template; then
+            echo "::error::Failed to template Helm chart. Run 'make helm-template' locally to debug."
+            exit 1
+          fi
+
+      - name: Check CRD sync
+        run: |
+          if ! diff -r config/crd/bases/ charts/parallax/crds/; then
+            echo "::error::CRDs are out of sync. Run 'make helm-crds' locally to update."
+            exit 1
+          fi
+
+      - name: Check RBAC sync
+        run: |
+          if ! diff config/rbac/role.yaml charts/parallax/generated/rbac-rules.yaml; then
+            echo "::error::RBAC rules are out of sync. Run 'make helm-rbac-rules' locally to update."
+            exit 1
+          fi 

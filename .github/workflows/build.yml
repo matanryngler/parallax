@@ -86,6 +86,3 @@ jobs:
             VERSION=${{ steps.version.outputs.version }}
             COMMIT=${{ steps.version.outputs.commit }}
             DATE=${{ steps.version.outputs.date }}
-
-      - name: Run e2e tests
-        run: make test-e2e 

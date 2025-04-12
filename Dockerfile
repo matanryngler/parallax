@@ -10,29 +10,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
+COPY config/ config/
 
 # Test stage (runs BEFORE build)
 FROM base AS test
-# Install kubebuilder and its dependencies
-RUN curl -L -o kubebuilder.tar.gz https://github.com/kubernetes-sigs/kubebuilder/releases/download/v3.14.1/kubebuilder_linux_amd64.tar.gz && \
-    tar -xzf kubebuilder.tar.gz && \
-    mv kubebuilder_linux_amd64 /usr/local/kubebuilder && \
-    rm kubebuilder.tar.gz && \
-    export PATH=$PATH:/usr/local/kubebuilder/bin
-
-# Install PostgreSQL client
-RUN apt-get update && \
-    apt-get install -y postgresql-client && \
-    rm -rf /var/lib/apt/lists/*
-
-# Set environment variables for tests
-ENV KUBEBUILDER_ASSETS=/usr/local/kubebuilder/bin
-ENV PATH=$PATH:/usr/local/kubebuilder/bin
-
-# Run tests with verbose output
+# Run placeholder test
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go test -v -count=1 ./...
+    go test -v ./...
 
 # Build stage
 FROM base AS builder

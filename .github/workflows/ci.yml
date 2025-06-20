@@ -122,40 +122,38 @@ jobs:
     - name: Set up Helm
       uses: azure/setup-helm@v4
 
-    - name: Validate Helm chart
-      run: |
-        # Lint the chart for syntax and best practices
-        helm lint charts/parallax
-        
-        # Template the chart to validate YAML generation (no cluster needed)
-        helm template parallax charts/parallax > /tmp/templated-manifests.yaml
-        
-        # Verify the templated output is valid YAML
-        echo "✅ Helm chart templated successfully - $(wc -l < /tmp/templated-manifests.yaml) lines generated"
-
-    - name: Install kubeval for Kubernetes manifest validation
+    - name: Install validation tools
       run: |
         # Install kubeval for validating Kubernetes manifests against schemas
         wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
         tar xf kubeval-linux-amd64.tar.gz
         sudo mv kubeval /usr/local/bin
         
+        # Install yamllint for proper YAML validation
+        pip install yamllint
+
+    - name: Lint Helm chart
+      run: |
+        helm lint charts/parallax
+        echo "✅ Helm chart linting passed"
+
+    - name: Template Helm chart
+      run: |
+        helm template parallax charts/parallax > /tmp/templated-manifests.yaml
+        echo "✅ Helm chart templated successfully - $(wc -l < /tmp/templated-manifests.yaml) lines generated"
+
     - name: Validate templated manifests with kubeval
       run: |
-        # Validate the templated Helm chart against Kubernetes schemas
         helm template parallax charts/parallax | kubeval --strict --ignore-missing-schemas
         echo "✅ All templated manifests are valid Kubernetes resources"
 
-    - name: Validate CRDs with kubeval
+    - name: Validate CRD YAML syntax
       run: |
-        # Install yamllint for proper YAML validation
-        pip install yamllint
-        
-        # Validate YAML syntax and formatting
         yamllint config/crd/bases/*.yaml
         echo "✅ All CRD files have valid YAML syntax and formatting"
-        
-        # Validate CRDs with kubeval for proper schema compliance (offline validation)
+
+    - name: Validate CRD Kubernetes schemas
+      run: |
         kubeval --strict config/crd/bases/*.yaml
         echo "✅ All CRDs are valid Kubernetes CustomResourceDefinitions"
 

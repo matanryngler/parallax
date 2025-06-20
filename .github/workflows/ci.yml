@@ -133,6 +133,19 @@ jobs:
         # Verify the templated output is valid YAML
         echo "✅ Helm chart templated successfully - $(wc -l < /tmp/templated-manifests.yaml) lines generated"
 
+    - name: Install kubeval for Kubernetes manifest validation
+      run: |
+        # Install kubeval for validating Kubernetes manifests against schemas
+        wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+        tar xf kubeval-linux-amd64.tar.gz
+        sudo mv kubeval /usr/local/bin
+        
+    - name: Validate templated manifests with kubeval
+      run: |
+        # Validate the templated Helm chart against Kubernetes schemas
+        helm template parallax charts/parallax | kubeval --strict --ignore-missing-schemas
+        echo "✅ All templated manifests are valid Kubernetes resources"
+
     - name: Validate CRDs
       run: |
         # Install kubectl
@@ -142,6 +155,10 @@ jobs:
         
         # Validate CRD syntax (dry-run only, no real cluster)
         KUBECONFIG=/dev/null kubectl --dry-run=client --validate=true apply -f config/crd/bases/
+        
+        # Also validate CRDs with kubeval for schema compliance
+        kubeval --strict config/crd/bases/*.yaml
+        echo "✅ All CRDs are valid Kubernetes CustomResourceDefinitions"
 
   test-e2e:
     name: E2E Tests (Optional)

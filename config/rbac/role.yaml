@@ -36,6 +36,7 @@ rules:
   - batch
   resources:
   - cronjobs
+  - jobs
   verbs:
   - create
   - delete
@@ -48,6 +49,7 @@ rules:
   - batchops.io
   resources:
   - listcronjobs
+  - listjobs
   - listsources
   verbs:
   - create
@@ -61,6 +63,7 @@ rules:
   - batchops.io
   resources:
   - listcronjobs/finalizers
+  - listjobs/finalizers
   - listsources/finalizers
   verbs:
   - update
@@ -68,6 +71,7 @@ rules:
   - batchops.io
   resources:
   - listcronjobs/status
+  - listjobs/status
   - listsources/status
   verbs:
   - get

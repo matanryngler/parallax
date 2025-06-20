@@ -1,0 +1,20 @@
+apiVersion: v2
+name: parallax-crds
+description: Parallax Custom Resource Definitions (CRDs)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/matanryngler/parallax
+sources:
+  - https://github.com/matanryngler/parallax
+maintainers:
+  - name: Matan Ryngler
+    url: https://github.com/matanryngler
+keywords:
+  - kubernetes
+  - operator
+  - batch
+  - parallel
+  - crds
+annotations:
+  category: Infrastructure 

@@ -1,0 +1,362 @@
+name: 🚀 Parallax CI/CD
+
+# Dynamic run name for easy traceability
+run-name: >
+  ${{ github.event_name == 'pull_request' && format('PR #{0}: {1} by @{2}', github.event.number, github.event.pull_request.title, github.actor) ||
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && format('Release {0} by @{1}', github.ref_name, github.actor) ||
+      github.event_name == 'push' && format('Push to {0} by @{1} ({2})', github.ref_name, github.actor, github.event.head_commit.message) ||
+      format('{0} on {1} by @{2}', github.event_name, github.ref_name, github.actor) }}
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+# Cancel previous runs for the same workflow on the same branch/PR
+# Each user gets their own concurrency group to avoid interfering with each other
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+        cache: true
+
+    - name: Run unit tests
+      run: go test -v -race -coverprofile=coverage.out ./internal/controller/ ./api/... ./cmd/...
+
+    - name: Check test coverage
+      run: |
+        coverage=$(go tool cover -func=coverage.out | grep total | awk '{print substr($3, 1, length($3)-1)}')
+        echo "Test coverage: ${coverage}%"
+        if (( $(echo "$coverage < 5" | bc -l) )); then
+          echo "❌ Test coverage is below 5%"
+          exit 1
+        fi
+        echo "✅ Test coverage is acceptable (≥5%)"
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.out
+        fail_ci_if_error: false
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+        cache: true
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Run go fmt check
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "❌ Code is not properly formatted. Run 'go fmt ./...'"
+          gofmt -s -l .
+          exit 1
+        fi
+        echo "✅ Code is properly formatted"
+
+  security:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build image for security scanning
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64
+        push: false
+        load: true
+        tags: parallax:pr-security-scan
+        cache-from: type=gha
+        build-args: |
+          VERSION=pr-security-scan
+          COMMIT=${{ github.sha }}
+          DATE=${{ github.event.head_commit.timestamp }}
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'parallax:pr-security-scan'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Display security scan summary
+      if: always()
+      run: |
+        echo "🔍 Container security scan completed with Trivy"
+        echo "📊 Results uploaded to GitHub Security tab"
+        echo "🐳 Scanned image: parallax:pr-security-scan"
+        echo "✅ Security validation complete for PR"
+
+  validate-manifests:
+    name: Validate Kubernetes Manifests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v4
+
+    - name: Install validation tools
+      run: |
+        # Install kubeval for validating Kubernetes manifests against schemas
+        wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+        tar xf kubeval-linux-amd64.tar.gz
+        sudo mv kubeval /usr/local/bin
+        
+        # Install yamllint for proper YAML validation
+        pip install yamllint
+
+    - name: Lint Helm charts
+      run: |
+        helm lint charts/parallax
+        helm lint charts/parallax-crds
+        echo "✅ Helm chart linting passed"
+
+    - name: Template Helm charts
+      run: |
+        helm template parallax charts/parallax > /tmp/main-chart.yaml
+        helm template parallax-crds charts/parallax-crds > /tmp/crds-chart.yaml
+        helm template parallax-no-crds charts/parallax --set installCRDs=false > /tmp/no-crds-chart.yaml
+        echo "✅ Main chart: $(wc -l < /tmp/main-chart.yaml) lines"
+        echo "✅ CRDs chart: $(wc -l < /tmp/crds-chart.yaml) lines"
+        echo "✅ No-CRDs chart: $(wc -l < /tmp/no-crds-chart.yaml) lines"
+
+    - name: Validate templated manifests with kubeval
+      run: |
+        helm template parallax charts/parallax | kubeval --strict --ignore-missing-schemas
+        helm template parallax-crds charts/parallax-crds | kubeval --strict --ignore-missing-schemas
+        helm template parallax-no-crds charts/parallax --set installCRDs=false | kubeval --strict --ignore-missing-schemas
+        echo "✅ All templated manifests are valid Kubernetes resources"
+
+    - name: Validate CRD YAML syntax
+      run: |
+        # Configure yamllint for generated CRDs (focus on syntax, not formatting)
+        yamllint -d '{extends: default, rules: {line-length: disable, indentation: disable, comments-indentation: disable}}' config/crd/bases/*.yaml
+        echo "✅ All CRD files have valid YAML syntax"
+
+    - name: Validate CRD Kubernetes schemas
+      run: |
+        # Validate CRDs with kubeval (ignore missing schemas for CRDs)
+        kubeval --strict --ignore-missing-schemas config/crd/bases/*.yaml
+        echo "✅ All CRDs are valid Kubernetes CustomResourceDefinitions"
+
+  test-e2e:
+    name: E2E Tests (Optional)
+    runs-on: ubuntu-latest
+    if: false  # Disabled for now - enable when needed
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+        cache: true
+
+    - name: Install Kind
+      run: |
+        go install sigs.k8s.io/kind@latest
+
+    - name: Run E2E tests (with isolated cluster)
+      run: |
+        make test-e2e E2E_CLUSTER_NAME=parallax-ci-e2e
+      env:
+        IMG: parallax:ci-test
+
+  build:
+    name: Build and Push Container Image
+    runs-on: ubuntu-latest
+    needs: [test, lint, validate-manifests]
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-uri: ${{ steps.build.outputs.image-uri }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=sha,prefix={{branch}}-
+        labels: |
+          org.opencontainers.image.title=Parallax Operator
+          org.opencontainers.image.description=Kubernetes operator for parallel batch processing
+          org.opencontainers.image.vendor=Matan Ryngler
+
+    - name: Build and push container image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          VERSION=${{ steps.meta.outputs.version }}
+          COMMIT=${{ github.sha }}
+          DATE=${{ github.event.head_commit.timestamp }}
+
+  sign-image:
+    name: Sign Container Image
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+    - name: Install cosign
+      uses: sigstore/cosign-installer@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Sign container image
+      run: |
+        cosign sign --yes ${{ needs.build.outputs.image-uri }}@${{ needs.build.outputs.image-digest }}
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build, sign-image]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+        cache: true
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v4
+
+    - name: Sync and package Helm charts
+      run: |
+        # Update chart versions from git tag
+        VERSION=${GITHUB_REF#refs/tags/v}
+        
+        # Update main chart
+        sed -i "s/version: .*/version: ${VERSION}/" charts/parallax/Chart.yaml
+        sed -i "s/appVersion: .*/appVersion: ${VERSION}/" charts/parallax/Chart.yaml
+        
+        # Update CRD chart
+        sed -i "s/version: .*/version: ${VERSION}/" charts/parallax-crds/Chart.yaml
+        sed -i "s/appVersion: .*/appVersion: ${VERSION}/" charts/parallax-crds/Chart.yaml
+        
+        # Sync latest manifests to charts
+        make sync-all
+        
+        # Package both charts
+        helm package charts/parallax --destination .
+        helm package charts/parallax-crds --destination .
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Simple changelog generation - can be enhanced
+        echo "## What's Changed" > CHANGELOG.md
+        git log --pretty=format:"* %s (%h)" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> CHANGELOG.md
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        body_path: CHANGELOG.md
+        files: |
+          parallax-*.tgz
+          parallax-crds-*.tgz
+        generate_release_notes: true
+        prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+
+  notify:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [test, lint, validate-manifests, build]
+    if: failure() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    steps:
+    - name: Send notification
+      run: |
+        echo "CI/CD pipeline failed for ${{ github.repository }} on ${{ github.ref_name }}"
+        echo "Check the workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        # Add Slack/Discord/email notification here if needed 

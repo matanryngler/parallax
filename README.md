@@ -1,206 +1,286 @@
 # Parallax Operator
 
-A Kubernetes operator for managing batch processing of lists of items with support for multiple data sources and scheduling.
+[![CI/CD Pipeline](https://github.com/matanryngler/parallax/actions/workflows/ci.yml/badge.svg)](https://github.com/matanryngler/parallax/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-## Overview
+A Kubernetes operator for parallel batch processing that enables you to process lists of items concurrently using various data sources.
 
-Parallax is a Kubernetes operator that provides a flexible way to process lists of items in parallel. It supports multiple data sources (static lists, APIs, and PostgreSQL) and can be scheduled as either one-time jobs or recurring cron jobs.
+## 🎯 Overview
 
-## Features
+Parallax allows you to:
+- **Fetch lists** from multiple sources (static lists, REST APIs, PostgreSQL databases)
+- **Process items in parallel** using Kubernetes Jobs
+- **Schedule recurring processing** with CronJobs
+- **Scale dynamically** based on list size
 
-- **Multiple Data Sources**:
-  - Static lists
-  - API endpoints with JSONPath support
-  - PostgreSQL database queries
-- **Flexible Processing**:
-  - Process items in parallel with configurable parallelism
-  - Each item processed in a separate pod
-  - Configurable resource limits and requests
-- **Scheduling Options**:
-  - One-time jobs (`ListJob`)
-  - Recurring cron jobs (`ListCronJob`)
-- **Source Management**:
-  - Automatic updates from data sources
-  - Configurable update intervals
-  - Support for authentication (Basic, Bearer token)
-- **Monitoring and Observability**:
-  - Status tracking
-  - Error reporting
-  - Event recording
+## 🏗️ Architecture
 
-## Installation
+Parallax defines three custom resources:
 
-### Prerequisites
+- **ListSource**: Defines where to fetch your list of items
+- **ListJob**: Creates Kubernetes Jobs to process each item in parallel
+- **ListCronJob**: Schedules ListJobs to run on a cron schedule
 
-- Kubernetes cluster (v1.20+)
-- kubectl configured to communicate with your cluster
-- cert-manager installed (for webhook certificates)
+```mermaid
+graph LR
+    A[ListSource] --> B[ConfigMap]
+    B --> C[ListJob]
+    B --> D[ListCronJob]
+    C --> E[Parallel Jobs]
+    D --> F[Scheduled Jobs]
+```
+
+## 🚀 Quick Start
 
 ### Installation
 
-The operator can be installed using kustomize:
-
+#### Option 1: Helm (Recommended)
 ```bash
-# Install CRDs
-kubectl apply -k config/crd
+# Install from GitHub releases (latest version)
+helm install parallax https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-0.1.0.tgz
 
-# Install RBAC
-kubectl apply -k config/rbac
-
-# Install manager
-kubectl apply -k config/manager
+# Or install from source
+git clone https://github.com/matanryngler/parallax.git
+cd parallax
+helm install parallax ./charts/parallax
 ```
 
-Alternatively, you can use the Makefile:
-
+#### Option 2: Separate CRDs (Advanced)
+For environments where CRDs are managed separately:
 ```bash
-# Install everything
-make install
+# Step 1: Install CRDs
+helm install parallax-crds https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-crds-0.1.0.tgz
 
-# Deploy the operator
-make deploy
+# Step 2: Install operator (without CRDs)
+helm install parallax https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-0.1.0.tgz --set installCRDs=false
 ```
 
-## Usage
+#### Option 3: kubectl (Direct)
+```bash
+# Apply all manifests directly (when available)
+kubectl apply -f https://github.com/matanryngler/parallax/releases/latest/download/parallax.yaml
+```
 
-### ListSource
+📖 **See [charts/README.md](charts/README.md) for detailed installation options and configuration.**
 
-A `ListSource` manages a list of items from various sources and makes them available to `ListJob` and `ListCronJob` resources.
+### Basic Example
 
-#### Example: API Source
-
+1. **Create a ListSource:**
 ```yaml
 apiVersion: batchops.io/v1alpha1
 kind: ListSource
 metadata:
   name: fruit-list
 spec:
-  type: api
-  intervalSeconds: 60  # Update every minute
-  api:
-    url: "http://api.example.com/fruits.json"
-    jsonPath: "$.fruits[*]"  # Extract items from the fruits array
-    headers:
-      Accept: "application/json"
-    auth:
-      type: bearer
-      secretRef:
-        name: api-token
-        key: token
-```
-
-#### Example: PostgreSQL Source
-
-```yaml
-apiVersion: batchops.io/v1alpha1
-kind: ListSource
-metadata:
-  name: user-list
-spec:
-  type: postgresql
+  type: static
+  staticList:
+    - apple
+    - banana
+    - orange
   intervalSeconds: 300  # Update every 5 minutes
-  postgres:
-    connectionString: "host=postgres.default.svc.cluster.local port=5432 dbname=users"
-    query: "SELECT username FROM active_users"
-    auth:
-      secretRef:
-        name: postgres-credentials
-        key: password
 ```
 
-### ListJob
-
-A `ListJob` processes a list of items once, either from a `ListSource` or a static list.
-
+2. **Create a ListJob to process the items:**
 ```yaml
 apiVersion: batchops.io/v1alpha1
 kind: ListJob
 metadata:
-  name: process-fruits
+  name: fruit-processor
 spec:
-  listSourceRef: "fruit-list"  # Reference to a ListSource
-  parallelism: 2  # Process 2 items at a time
+  listSourceRef: fruit-list
+  parallelism: 3
   template:
-    image: "busybox"
+    image: busybox
     command: ["echo", "Processing fruit: $ITEM"]
-    envName: "ITEM"
+    envName: ITEM
     resources:
       requests:
         cpu: "100m"
         memory: "128Mi"
-      limits:
-        cpu: "200m"
-        memory: "256Mi"
-  ttlSecondsAfterFinished: 3600  # Delete job after 1 hour
 ```
 
-### ListCronJob
+3. **Apply the resources:**
+```bash
+kubectl apply -f listsource.yaml
+kubectl apply -f listjob.yaml
+```
 
-A `ListCronJob` processes a list of items on a schedule, similar to Kubernetes CronJob.
+## 📋 Data Sources
+
+### Static Lists
+```yaml
+spec:
+  type: static
+  staticList:
+    - item1
+    - item2
+    - item3
+```
+
+### REST API
+```yaml
+spec:
+  type: api
+  api:
+    url: "https://api.example.com/items"
+    jsonPath: "$.data[*].id"
+    headers:
+      Authorization: "Bearer token"
+```
+
+### PostgreSQL Database
+```yaml
+spec:
+  type: postgres
+  postgres:
+    host: "postgres.example.com"
+    port: 5432
+    database: "mydb"
+    query: "SELECT id FROM items WHERE active = true"
+    usernameSecret:
+      name: postgres-credentials
+      key: username
+    passwordSecret:
+      name: postgres-credentials
+      key: password
+```
+
+## 🔄 Scheduling with ListCronJob
 
 ```yaml
 apiVersion: batchops.io/v1alpha1
 kind: ListCronJob
 metadata:
-  name: daily-fruit-processor
+  name: daily-processor
 spec:
-  listSourceRef: "fruit-list"
-  parallelism: 2
+  listSourceRef: my-list-source
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  parallelism: 5
   template:
-    image: "busybox"
-    command: ["echo", "Processing fruit: $ITEM"]
-    envName: "ITEM"
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "128Mi"
-      limits:
-        cpu: "200m"
-        memory: "256Mi"
-  schedule: "0 0 * * *"  # Run daily at midnight
-  concurrencyPolicy: "Forbid"  # Don't allow concurrent runs
-  startingDeadlineSeconds: 300  # Allow 5 minutes of delay
+    image: my-processor:latest
+    command: ["./process"]
+    envName: ITEM
+  concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
-  suspend: false
 ```
 
-## Development
+## 🛠️ Development
 
 ### Prerequisites
-
-- Go 1.20+
+- Go 1.23+
 - Docker
-- kubectl
-- kind (for local testing)
+- Kubernetes cluster (for testing)
+- Make
 
-### Building
-
-```bash
-# Build the operator image
-make docker-build
-
-# Push the operator image
-make docker-push
-```
-
-### Testing
+### Building and Testing
 
 ```bash
-# Run unit tests
+# Quick CI checks (tests + linting)
+make ci-quick
+
+# Run all CI checks locally (matches GitHub Actions)
+make ci-all
+
+# Run unit tests only
 make test
 
-# Run e2e tests
+# Run E2E tests (creates isolated Kind cluster)
 make test-e2e
+
+# Build the operator
+make build
+
+# Run locally (requires kubeconfig)
+make run
+
+# Build and push docker image
+make docker-build docker-push IMG=my-registry/parallax:tag
 ```
 
-## Contributing
+### Testing Philosophy
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+**🔒 Isolated Testing**: Tests never touch your production resources
+- Unit tests run completely offline
+- E2E tests create dedicated Kind clusters (`parallax-e2e-test`)  
+- All test clusters are automatically cleaned up
+- No accidental impact on your real Kubernetes clusters
 
-## License
+**🚀 Local CI**: Run the same checks as GitHub Actions
+```bash
+# Quick feedback loop
+./scripts/pre-commit.sh
+
+# Or use Make targets
+make ci-quick      # Fast: tests + linting
+make ci-all        # Complete: all CI checks
+```
+
+### Project Structure
+```
+├── api/v1alpha1/          # CRD definitions
+├── internal/controller/   # Controller implementations
+├── config/               # Kubernetes manifests
+├── charts/parallax/      # Helm chart
+├── test/                 # E2E tests
+└── samples/              # Example configurations
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `METRICS_BIND_ADDRESS` | Metrics server bind address | `:8080` |
+| `LEADER_ELECT` | Enable leader election | `false` |
+| `LOG_LEVEL` | Log level (debug, info, warn, error) | `info` |
+
+### Resource Requirements
+
+**Minimum:**
+- CPU: 100m
+- Memory: 128Mi
+
+**Recommended:**
+- CPU: 500m
+- Memory: 256Mi
+
+## 📊 Monitoring
+
+The operator exposes Prometheus metrics on `/metrics`:
+
+- `parallax_listsource_items_total` - Total items fetched by ListSource
+- `parallax_listjob_duration_seconds` - Time taken to process ListJobs
+- `parallax_errors_total` - Total errors encountered
+
+## 🔒 Security
+
+- Supports RBAC with minimal required permissions
+- Secrets are handled securely for database connections
+- Container images are signed with cosign
+- Regular security scanning with Gosec
+
+## 🤝 Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Commit changes: `git commit -am 'Add my feature'`
+4. Push to the branch: `git push origin feature/my-feature`
+5. Create a Pull Request
+
+## 📝 License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-# Contributors
-Matan Ryngler
+## 🆘 Support
+
+- 📖 [Documentation](https://github.com/matanryngler/parallax/wiki)
+- 💬 [Discussions](https://github.com/matanryngler/parallax/discussions)
+- 🐛 [Issues](https://github.com/matanryngler/parallax/issues)
+
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=matanryngler/parallax&type=Date)](https://star-history.com/#matanryngler/parallax&Date)

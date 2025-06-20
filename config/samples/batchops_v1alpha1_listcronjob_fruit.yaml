@@ -1,0 +1,24 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListCronJob
+metadata:
+  name: fruit-processor
+spec:
+  listSourceRef: "fruit-list"  # References the ListSource we created earlier
+  parallelism: 2  # Process 2 items at a time
+  template:
+    image: "busybox"
+    command: ["echo", "Processing fruit: $ITEM"]
+    envName: "ITEM"
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+  schedule: "*/5 * * * *"  # Run every 5 minutes
+  concurrencyPolicy: "Forbid"  # Don't allow concurrent runs
+  startingDeadlineSeconds: 60  # Allow 60 seconds of delay before considering a run failed
+  successfulJobsHistoryLimit: 3  # Keep history of last 3 successful runs
+  failedJobsHistoryLimit: 1  # Keep history of last failed run
+  suspend: false  # Don't suspend the CronJob 

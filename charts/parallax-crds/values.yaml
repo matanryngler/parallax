@@ -1,0 +1,6 @@
+# Parallax CRDs Chart Configuration
+# This chart only installs the Custom Resource Definitions (CRDs)
+# For the full operator installation, use the 'parallax' chart instead
+
+# No configuration needed - this chart only contains CRDs
+# The CRDs are automatically installed when you install this chart 

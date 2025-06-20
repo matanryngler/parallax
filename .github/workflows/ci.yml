@@ -151,19 +151,26 @@ jobs:
         # Install yamllint for proper YAML validation
         pip install yamllint
 
-    - name: Lint Helm chart
+    - name: Lint Helm charts
       run: |
         helm lint charts/parallax
+        helm lint charts/parallax-crds
         echo "✅ Helm chart linting passed"
 
-    - name: Template Helm chart
+    - name: Template Helm charts
       run: |
-        helm template parallax charts/parallax > /tmp/templated-manifests.yaml
-        echo "✅ Helm chart templated successfully - $(wc -l < /tmp/templated-manifests.yaml) lines generated"
+        helm template parallax charts/parallax > /tmp/main-chart.yaml
+        helm template parallax-crds charts/parallax-crds > /tmp/crds-chart.yaml
+        helm template parallax-no-crds charts/parallax --set installCRDs=false > /tmp/no-crds-chart.yaml
+        echo "✅ Main chart: $(wc -l < /tmp/main-chart.yaml) lines"
+        echo "✅ CRDs chart: $(wc -l < /tmp/crds-chart.yaml) lines"
+        echo "✅ No-CRDs chart: $(wc -l < /tmp/no-crds-chart.yaml) lines"
 
     - name: Validate templated manifests with kubeval
       run: |
         helm template parallax charts/parallax | kubeval --strict --ignore-missing-schemas
+        helm template parallax-crds charts/parallax-crds | kubeval --strict --ignore-missing-schemas
+        helm template parallax-no-crds charts/parallax --set installCRDs=false | kubeval --strict --ignore-missing-schemas
         echo "✅ All templated manifests are valid Kubernetes resources"
 
     - name: Validate CRD YAML syntax
@@ -296,18 +303,34 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+        cache: true
+
     - name: Set up Helm
       uses: azure/setup-helm@v4
 
-    - name: Package Helm chart
+    - name: Sync and package Helm charts
       run: |
-        # Update chart version from git tag
+        # Update chart versions from git tag
         VERSION=${GITHUB_REF#refs/tags/v}
+        
+        # Update main chart
         sed -i "s/version: .*/version: ${VERSION}/" charts/parallax/Chart.yaml
         sed -i "s/appVersion: .*/appVersion: ${VERSION}/" charts/parallax/Chart.yaml
         
-        # Package chart
+        # Update CRD chart
+        sed -i "s/version: .*/version: ${VERSION}/" charts/parallax-crds/Chart.yaml
+        sed -i "s/appVersion: .*/appVersion: ${VERSION}/" charts/parallax-crds/Chart.yaml
+        
+        # Sync latest manifests to charts
+        make sync-all
+        
+        # Package both charts
         helm package charts/parallax --destination .
+        helm package charts/parallax-crds --destination .
 
     - name: Generate changelog
       id: changelog
@@ -322,6 +345,7 @@ jobs:
         body_path: CHANGELOG.md
         files: |
           parallax-*.tgz
+          parallax-crds-*.tgz
         generate_release_notes: true
         prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
 

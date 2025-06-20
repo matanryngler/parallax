@@ -1,10 +1,13 @@
-{{- if .Values.serviceAccount.create -}}
+{{/*
+Auto-generated from config/rbac - DO NOT EDIT MANUALLY
+Run 'make sync-rbac' to update
+*/}}
+---
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: {{ include "parallax.fullname" . }}-manager-role
-  labels:
-    {{- include "parallax.labels" . | nindent 4 }}
 rules:
 - apiGroups:
   - ""
@@ -21,18 +24,19 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
-  - ""
-  resources:
+  - configmaps/status
   - secrets
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 - apiGroups:
   - batch
   resources:
@@ -82,9 +86,10 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "parallax.fullname" . }}-manager-rolebinding
   labels:
-    {{- include "parallax.labels" . | nindent 4 }}
+    app.kubernetes.io/name: parallax
+    app.kubernetes.io/managed-by: kustomize
+  name: {{ include "parallax.fullname" . }}-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -94,13 +99,14 @@ subjects:
   name: {{ include "parallax.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
 ---
+# permissions to do leader election.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "parallax.fullname" . }}-leader-election-role
-  namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "parallax.labels" . | nindent 4 }}
+    app.kubernetes.io/name: parallax
+    app.kubernetes.io/managed-by: kustomize
+  name: {{ include "parallax.fullname" . }}-leader-election-role
 rules:
 - apiGroups:
   - ""
@@ -137,10 +143,10 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ include "parallax.fullname" . }}-leader-election-rolebinding
-  namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "parallax.labels" . | nindent 4 }}
+    app.kubernetes.io/name: parallax
+    app.kubernetes.io/managed-by: kustomize
+  name: {{ include "parallax.fullname" . }}-leader-election-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -149,4 +155,3 @@ subjects:
 - kind: ServiceAccount
   name: {{ include "parallax.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
-{{- end }} 

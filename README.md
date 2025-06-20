@@ -34,16 +34,34 @@ graph LR
 
 ### Installation
 
-1. **Install the operator using Helm:**
+#### Option 1: Helm (Recommended)
 ```bash
-helm repo add parallax https://matanryngler.github.io/parallax
-helm install parallax parallax/parallax
+# Install from GitHub releases (latest version)
+helm install parallax https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-0.1.0.tgz
+
+# Or install from source
+git clone https://github.com/matanryngler/parallax.git
+cd parallax
+helm install parallax ./charts/parallax
 ```
 
-2. **Or apply the manifests directly:**
+#### Option 2: Separate CRDs (Advanced)
+For environments where CRDs are managed separately:
 ```bash
+# Step 1: Install CRDs
+helm install parallax-crds https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-crds-0.1.0.tgz
+
+# Step 2: Install operator (without CRDs)
+helm install parallax https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-0.1.0.tgz --set installCRDs=false
+```
+
+#### Option 3: kubectl (Direct)
+```bash
+# Apply all manifests directly (when available)
 kubectl apply -f https://github.com/matanryngler/parallax/releases/latest/download/parallax.yaml
 ```
+
+📖 **See [charts/README.md](charts/README.md) for detailed installation options and configuration.**
 
 ### Basic Example
 

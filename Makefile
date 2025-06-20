@@ -50,6 +50,53 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	@$(MAKE) sync-all
+
+##@ Helm Chart Sync
+
+.PHONY: sync-crds
+sync-crds: ## Sync CRDs from config/crd/bases to helm charts.
+	@echo "📋 Syncing CRDs to Helm charts..."
+	@mkdir -p charts/parallax/crds
+	@mkdir -p charts/parallax-crds/templates
+	@cp config/crd/bases/*.yaml charts/parallax/crds/
+	@cp config/crd/bases/*.yaml charts/parallax-crds/templates/
+	@echo "✅ CRDs synced to both charts"
+
+.PHONY: sync-rbac
+sync-rbac: ## Sync RBAC from config/rbac to helm chart templates.
+	@echo "🔐 Syncing RBAC to Helm chart..."
+	@mkdir -p charts/parallax/templates
+	@# Generate Helm-templated RBAC
+	@echo "{{/*" > charts/parallax/templates/rbac.yaml
+	@echo "Auto-generated from config/rbac - DO NOT EDIT MANUALLY" >> charts/parallax/templates/rbac.yaml
+	@echo "Run 'make sync-rbac' to update" >> charts/parallax/templates/rbac.yaml
+	@echo "*/}}" >> charts/parallax/templates/rbac.yaml
+	@echo "---" >> charts/parallax/templates/rbac.yaml
+	@# Process ClusterRole
+	@sed 's/name: manager-role/name: {{ include "parallax.fullname" . }}-manager-role/' config/rbac/role.yaml >> charts/parallax/templates/rbac.yaml
+	@echo "---" >> charts/parallax/templates/rbac.yaml
+	@# Process ClusterRoleBinding with templating
+	@sed -e 's/name: manager-rolebinding/name: {{ include "parallax.fullname" . }}-manager-rolebinding/' \
+	     -e 's/name: manager-role/name: {{ include "parallax.fullname" . }}-manager-role/' \
+	     -e 's/name: controller-manager/name: {{ include "parallax.serviceAccountName" . }}/' \
+	     -e 's/namespace: system/namespace: {{ .Release.Namespace }}/' \
+	     config/rbac/role_binding.yaml >> charts/parallax/templates/rbac.yaml
+	@echo "---" >> charts/parallax/templates/rbac.yaml
+	@# Process leader election Role
+	@sed 's/name: leader-election-role/name: {{ include "parallax.fullname" . }}-leader-election-role/' config/rbac/leader_election_role.yaml >> charts/parallax/templates/rbac.yaml
+	@echo "---" >> charts/parallax/templates/rbac.yaml
+	@# Process leader election RoleBinding
+	@sed -e 's/name: leader-election-rolebinding/name: {{ include "parallax.fullname" . }}-leader-election-rolebinding/' \
+	     -e 's/name: leader-election-role/name: {{ include "parallax.fullname" . }}-leader-election-role/' \
+	     -e 's/name: controller-manager/name: {{ include "parallax.serviceAccountName" . }}/' \
+	     -e 's/namespace: system/namespace: {{ .Release.Namespace }}/' \
+	     config/rbac/leader_election_role_binding.yaml >> charts/parallax/templates/rbac.yaml
+	@echo "✅ RBAC synced to Helm chart with templating"
+
+.PHONY: sync-all
+sync-all: sync-crds sync-rbac ## Sync all generated manifests to helm charts.
+	@echo "🔄 All manifests synced to Helm charts"
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -107,10 +154,13 @@ ci-security: ## Run security scanning (matches CI).
 ci-validate: ## Validate Kubernetes manifests (matches CI).
 	@echo "📋 Validating Kubernetes manifests..."
 	@if command -v helm >/dev/null 2>&1; then \
-		echo "  • Validating Helm chart..."; \
+		echo "  • Validating Helm charts..."; \
 		helm lint charts/parallax; \
+		helm lint charts/parallax-crds; \
 		echo "  • Rendering Helm templates (offline)..."; \
 		helm template test charts/parallax --dry-run >/dev/null 2>&1; \
+		helm template test-crds charts/parallax-crds --dry-run >/dev/null 2>&1; \
+		helm template test-no-crds charts/parallax --set installCRDs=false --dry-run >/dev/null 2>&1; \
 		echo "✅ Helm validation passed"; \
 	else \
 		echo "⚠️  Helm not installed. Skipping Helm validation..."; \

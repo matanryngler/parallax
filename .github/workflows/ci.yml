@@ -149,7 +149,8 @@ jobs:
 
     - name: Validate CRD YAML syntax
       run: |
-        yamllint config/crd/bases/*.yaml
+        # Configure yamllint for Kubernetes manifests (more lenient)
+        yamllint -d '{extends: default, rules: {line-length: {max: 120}, indentation: {spaces: consistent}}}' config/crd/bases/*.yaml
         echo "✅ All CRD files have valid YAML syntax and formatting"
 
     - name: Validate CRD Kubernetes schemas

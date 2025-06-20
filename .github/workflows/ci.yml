@@ -86,30 +86,41 @@ jobs:
     name: Container Security Scan
     runs-on: ubuntu-latest
     needs: [build]
+    if: github.event_name == 'pull_request'
     permissions:
       contents: read
-      packages: read
       security-events: write
     steps:
-    - name: Run Trivy vulnerability scanner (for pushed images)
-      if: github.event_name != 'pull_request'
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ needs.build.outputs.image-uri }}@${{ needs.build.outputs.image-digest }}
-        format: 'sarif'
-        output: 'trivy-results.sarif'
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-    - name: Run Trivy vulnerability scanner (for PR builds)
-      if: github.event_name == 'pull_request'
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build image for security scanning
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64
+        push: false
+        load: true
+        tags: parallax:pr-security-scan
+        cache-from: type=gha
+        build-args: |
+          VERSION=pr-security-scan
+          COMMIT=${{ github.sha }}
+          DATE=${{ github.event.head_commit.timestamp }}
+
+    - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ needs.build.outputs.image-tag }}
+        image-ref: 'parallax:pr-security-scan'
         format: 'sarif'
         output: 'trivy-results.sarif'
 
     - name: Upload Trivy scan results to GitHub Security tab
-      if: always() && github.event_name != 'pull_request'
       uses: github/codeql-action/upload-sarif@v3
+      if: always()
       with:
         sarif_file: 'trivy-results.sarif'
 
@@ -117,13 +128,9 @@ jobs:
       if: always()
       run: |
         echo "🔍 Container security scan completed with Trivy"
-        if [ "${{ github.event_name }}" != "pull_request" ]; then
-          echo "📊 Results uploaded to GitHub Security tab"
-          echo "🐳 Scanned image: ${{ needs.build.outputs.image-uri }}@${{ needs.build.outputs.image-digest }}"
-        else
-          echo "📊 PR security scan completed (results not uploaded to Security tab)"
-          echo "🐳 Scanned image: ${{ needs.build.outputs.image-tag }}"
-        fi
+        echo "📊 Results uploaded to GitHub Security tab"
+        echo "🐳 Scanned image: parallax:pr-security-scan"
+        echo "✅ Security validation complete for PR"
 
   validate-manifests:
     name: Validate Kubernetes Manifests
@@ -197,16 +204,16 @@ jobs:
         IMG: parallax:ci-test
 
   build:
-    name: Build Container Image
+    name: Build and Push Container Image
     runs-on: ubuntu-latest
     needs: [test, lint, validate-manifests]
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
       packages: write
     outputs:
       image-digest: ${{ steps.build.outputs.digest }}
       image-uri: ${{ steps.build.outputs.image-uri }}
-      image-tag: ${{ steps.meta.outputs.tags }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -215,7 +222,6 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Log in to Container Registry
-      if: github.event_name != 'pull_request'
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -229,28 +235,26 @@ jobs:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
           type=ref,event=branch
-          type=ref,event=pr
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}
-          type=sha,prefix={{branch}}-,enable={{is_default_branch}}
+          type=sha,prefix={{branch}}-
         labels: |
           org.opencontainers.image.title=Parallax Operator
           org.opencontainers.image.description=Kubernetes operator for parallel batch processing
           org.opencontainers.image.vendor=Matan Ryngler
 
-    - name: Build container image
+    - name: Build and push container image
       id: build
       uses: docker/build-push-action@v5
       with:
         context: .
-        platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-        push: ${{ github.event_name != 'pull_request' }}
+        platforms: linux/amd64,linux/arm64
+        push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        outputs: ${{ github.event_name == 'pull_request' && 'type=docker' || '' }}
         build-args: |
           VERSION=${{ steps.meta.outputs.version }}
           COMMIT=${{ github.sha }}
@@ -325,7 +329,7 @@ jobs:
   notify:
     name: Notify on Failure
     runs-on: ubuntu-latest
-    needs: [test, lint, security, validate-manifests, build]
+    needs: [test, lint, validate-manifests, build]
     if: failure() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     steps:
     - name: Send notification

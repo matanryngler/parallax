@@ -308,10 +308,12 @@ func (r *ListSourceReconciler) getItemsFromAPI(ctx context.Context, listSource *
 		switch listSource.Spec.API.Auth.Type {
 		case batchopsv1alpha1.BasicAuth:
 			username := secret[listSource.Spec.API.Auth.UsernameKey]
-			req.SetBasicAuth(username, "REDACTED")
+			password := secret[listSource.Spec.API.Auth.PasswordKey]
+			req.SetBasicAuth(username, password)
 			log.V(1).Info("Configured basic auth for request", "username", username)
 		case batchopsv1alpha1.BearerAuth:
-			req.Header.Set("Authorization", "Bearer REDACTED")
+			token := secret[listSource.Spec.API.Auth.SecretRef.Key]
+			req.Header.Set("Authorization", "Bearer "+token)
 			log.V(1).Info("Configured bearer token authentication for request")
 		default:
 			log.Error(nil, "Unsupported authentication type specified", "auth_type", listSource.Spec.API.Auth.Type)

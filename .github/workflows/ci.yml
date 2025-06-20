@@ -1,4 +1,11 @@
-name: CI/CD Pipeline
+name: 🚀 Parallax CI/CD
+
+# Dynamic run name for easy traceability
+run-name: >
+  ${{ github.event_name == 'pull_request' && format('PR #{0}: {1} by @{2}', github.event.number, github.event.pull_request.title, github.actor) ||
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && format('Release {0} by @{1}', github.ref_name, github.actor) ||
+      github.event_name == 'push' && format('Push to {0} by @{1} ({2})', github.ref_name, github.actor, github.event.head_commit.message) ||
+      format('{0} on {1} by @{2}', github.event_name, github.ref_name, github.actor) }}
 
 on:
   push:
@@ -6,6 +13,12 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+
+# Cancel previous runs for the same workflow on the same branch/PR
+# Each user gets their own concurrency group to avoid interfering with each other
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
@@ -76,15 +89,22 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Run Gosec Security Scanner
-      uses: securecodewarrior/github-action-gosec@master
+    - name: Set up Go
+      uses: actions/setup-go@v5
       with:
-        args: '-fmt sarif -out gosec-results.sarif ./...'
+        go-version: '1.23'
+        cache: true
+
+    - name: Install and run Gosec Security Scanner
+      run: |
+        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+        gosec -fmt sarif -out gosec-results.sarif ./...
 
     - name: Upload SARIF file
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: gosec-results.sarif
+      if: always()
 
   validate-manifests:
     name: Validate Kubernetes Manifests

@@ -83,53 +83,34 @@ jobs:
         echo "✅ Code is properly formatted"
 
   security:
-    name: Security Scan
+    name: Container Security Scan
     runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
       with:
-        go-version: '1.23'
-        cache: true
+        image-ref: ${{ needs.build.outputs.image-uri }}@${{ needs.build.outputs.image-digest }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
 
-    - name: Run Gosec Security Scanner
-      uses: securecodewarrior/github-action-gosec@v1
-      with:
-        args: './...'
-      continue-on-error: true
-      
-    - name: Create fallback SARIF if needed
-      if: always()
-      run: |
-        # Ensure SARIF file exists for upload
-        if [ ! -f gosec-results.sarif ]; then
-          echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[]}' > gosec-results.sarif
-        fi
-
-    - name: Upload SARIF file
+    - name: Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: gosec-results.sarif
       if: always()
-      continue-on-error: true
+      with:
+        sarif_file: 'trivy-results.sarif'
 
     - name: Display security scan summary
       if: always()
       run: |
-        if [ -f gosec-results.sarif ]; then
-          echo "✅ Security scan completed - results uploaded to GitHub Security tab"
-          # Show a summary if there are findings
-          if grep -q '"results":\[' gosec-results.sarif && ! grep -q '"results":\[\]' gosec-results.sarif; then
-            echo "⚠️  Security findings detected - check the Security tab for details"
-          else
-            echo "🎉 No security issues found"
-          fi
-        else
-          echo "❌ Security scan failed to generate results"
-        fi
+        echo "🔍 Container security scan completed with Trivy"
+        echo "📊 Results uploaded to GitHub Security tab"
+        echo "🐳 Scanned image: ${{ needs.build.outputs.image-uri }}@${{ needs.build.outputs.image-digest }}"
 
   validate-manifests:
     name: Validate Kubernetes Manifests

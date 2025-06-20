@@ -146,18 +146,16 @@ jobs:
         helm template parallax charts/parallax | kubeval --strict --ignore-missing-schemas
         echo "✅ All templated manifests are valid Kubernetes resources"
 
-    - name: Validate CRDs
+    - name: Validate CRDs with kubeval
       run: |
-        # Install kubectl
-        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-        chmod +x kubectl
-        sudo mv kubectl /usr/local/bin/
+        # Install yamllint for proper YAML validation
+        pip install yamllint
         
-        # Validate CRD syntax (dry-run only, no real cluster, no validation to avoid OpenAPI fetch)
-        KUBECONFIG=/dev/null kubectl --dry-run=client --validate=false apply -f config/crd/bases/
-        echo "✅ CRD syntax validation passed"
+        # Validate YAML syntax and formatting
+        yamllint config/crd/bases/*.yaml
+        echo "✅ All CRD files have valid YAML syntax and formatting"
         
-        # Validate CRDs with kubeval for proper schema compliance (this is the real validation)
+        # Validate CRDs with kubeval for proper schema compliance (offline validation)
         kubeval --strict config/crd/bases/*.yaml
         echo "✅ All CRDs are valid Kubernetes CustomResourceDefinitions"
 

@@ -95,18 +95,18 @@ jobs:
         go-version: '1.23'
         cache: true
 
-    - name: Install and run Gosec Security Scanner
+    - name: Run Gosec Security Scanner
+      uses: securecodewarrior/github-action-gosec@v1
+      with:
+        args: './...'
+      continue-on-error: true
+      
+    - name: Create fallback SARIF if needed
+      if: always()
       run: |
-        # Install gosec with explicit version and proper error handling
-        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@v2.18.2
-        
-        # Run gosec with proper error handling and ensure SARIF file is created
-        if ! gosec -fmt sarif -out gosec-results.sarif ./...; then
-          echo "Gosec found security issues, but continuing to upload results"
-          # Create empty SARIF if gosec failed completely
-          if [ ! -f gosec-results.sarif ]; then
-            echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[]}' > gosec-results.sarif
-          fi
+        # Ensure SARIF file exists for upload
+        if [ ! -f gosec-results.sarif ]; then
+          echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[]}' > gosec-results.sarif
         fi
 
     - name: Upload SARIF file

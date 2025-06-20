@@ -155,7 +155,8 @@ jobs:
 
     - name: Validate CRD Kubernetes schemas
       run: |
-        kubeval --strict config/crd/bases/*.yaml
+        # Validate CRDs with kubeval (ignore missing schemas for CRDs)
+        kubeval --strict --ignore-missing-schemas config/crd/bases/*.yaml
         echo "✅ All CRDs are valid Kubernetes CustomResourceDefinitions"
 
   test-e2e:

@@ -158,8 +158,17 @@ spec:
 ### Building and Testing
 
 ```bash
-# Run tests
+# Quick CI checks (tests + linting)
+make ci-quick
+
+# Run all CI checks locally (matches GitHub Actions)
+make ci-all
+
+# Run unit tests only
 make test
+
+# Run E2E tests (creates isolated Kind cluster)
+make test-e2e
 
 # Build the operator
 make build
@@ -169,6 +178,24 @@ make run
 
 # Build and push docker image
 make docker-build docker-push IMG=my-registry/parallax:tag
+```
+
+### Testing Philosophy
+
+**🔒 Isolated Testing**: Tests never touch your production resources
+- Unit tests run completely offline
+- E2E tests create dedicated Kind clusters (`parallax-e2e-test`)  
+- All test clusters are automatically cleaned up
+- No accidental impact on your real Kubernetes clusters
+
+**🚀 Local CI**: Run the same checks as GitHub Actions
+```bash
+# Quick feedback loop
+./scripts/pre-commit.sh
+
+# Or use Make targets
+make ci-quick      # Fast: tests + linting
+make ci-all        # Complete: all CI checks
 ```
 
 ### Project Structure

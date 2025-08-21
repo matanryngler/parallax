@@ -13,6 +13,7 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 # Cancel previous runs for the same workflow on the same branch/PR
 # Each user gets their own concurrency group to avoid interfering with each other
@@ -207,34 +208,169 @@ jobs:
         kubeval --strict --ignore-missing-schemas config/crd/bases/*.yaml
         echo "✅ All CRDs are valid Kubernetes CustomResourceDefinitions"
 
-  test-e2e:
-    name: E2E Tests (Optional)
+  # Comprehensive E2E Tests
+  detect-e2e-changes:
+    name: Detect E2E Changes
     runs-on: ubuntu-latest
-    if: false  # Disabled for now - enable when needed
+    outputs:
+      e2e-needed: ${{ steps.decision.outputs.e2e-needed }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
+
+    - name: Check for code changes and decide
+      id: decision
+      run: |
+        if [[ "${{ github.event_name }}" == "push" ]] || [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "e2e-needed=true" >> $GITHUB_OUTPUT
+          echo "🧪 Comprehensive E2E tests will run"
+        else
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+          if echo "$CHANGED_FILES" | grep -E "\.(go|yaml|yml)$|Makefile|Dockerfile|charts/|test/" > /dev/null; then
+            echo "e2e-needed=true" >> $GITHUB_OUTPUT
+            echo "🧪 Comprehensive E2E tests will run - code changes detected"
+          else
+            echo "e2e-needed=false" >> $GITHUB_OUTPUT
+            echo "⏭️ Skipping comprehensive E2E tests - only documentation changes"
+          fi
+        fi
+
+  build-operator-e2e:
+    name: Build Operator for E2E
+    needs: [detect-e2e-changes]
+    if: needs.detect-e2e-changes.outputs.e2e-needed == 'true'
+    uses: ./.github/workflows/reusable-build-image.yml
+    with:
+      image-name: 'parallax'
+      context: '.'
+      cache-scope: 'operator-e2e'
+      artifact-name: 'parallax-operator-e2e-image'
+      build-args: |
+        VERSION=e2e-test
+        COMMIT=${{ github.sha }}
+        DATE=${{ github.event.head_commit.timestamp }}
+
+  build-api-server-e2e:
+    name: Build API Server for E2E
+    needs: [detect-e2e-changes]
+    if: needs.detect-e2e-changes.outputs.e2e-needed == 'true'
+    uses: ./.github/workflows/reusable-build-image.yml
+    with:
+      image-name: 'api-server'
+      context: './test/e2e/testdata/api-server'
+      cache-scope: 'api-server-e2e'
+      artifact-name: 'api-server-e2e-image'
+
+  api-postgres-e2e:
+    name: API & PostgreSQL E2E Tests
+    needs: [detect-e2e-changes, build-operator-e2e, build-api-server-e2e]
+    if: needs.detect-e2e-changes.outputs.e2e-needed == 'true'
+    uses: ./.github/workflows/reusable-e2e-tests.yml
+    with:
+      test-name: 'API & PostgreSQL Tests'
+      test-pattern: 'Comprehensive.*API|Comprehensive.*PostgreSQL'
+      cluster-name: 'api-postgres-test'
+      timeout-minutes: 25
+      needs-postgres: true
+      needs-api-server: true
+      operator-artifact: 'parallax-operator-e2e-image'
+      api-server-artifact: 'api-server-e2e-image'
+
+  integration-e2e:
+    name: Integration E2E Tests
+    needs: [detect-e2e-changes, build-operator-e2e, build-api-server-e2e]
+    if: needs.detect-e2e-changes.outputs.e2e-needed == 'true'
+    uses: ./.github/workflows/reusable-e2e-tests.yml
+    with:
+      test-name: 'Integration Tests'
+      test-pattern: 'Comprehensive.*Integration'
+      cluster-name: 'integration-test'
+      timeout-minutes: 20
+      needs-postgres: true
+      needs-api-server: true
+      operator-artifact: 'parallax-operator-e2e-image'
+      api-server-artifact: 'api-server-e2e-image'
+
+  helm-e2e:
+    name: Helm E2E Tests
+    needs: [detect-e2e-changes, build-operator-e2e]
+    if: needs.detect-e2e-changes.outputs.e2e-needed == 'true'
+    uses: ./.github/workflows/reusable-helm-tests.yml
+    with:
+      operator-artifact: 'parallax-operator-e2e-image'
+
+  validation-e2e:
+    name: Chart Validation E2E Tests
+    runs-on: ubuntu-latest
+    needs: detect-e2e-changes
+    if: needs.detect-e2e-changes.outputs.e2e-needed == 'true'
+    timeout-minutes: 5
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
+    - name: Setup test environment
+      uses: ./.github/actions/setup-test-env
       with:
-        go-version: '1.23'
-        cache: true
+        install-kind: 'false'
+        install-helm: 'true'
 
-    - name: Install Kind
+    - name: Run chart linting and templating tests
       run: |
-        go install sigs.k8s.io/kind@latest
+        # Lint charts
+        helm lint ./charts/parallax
+        helm lint ./charts/parallax-crds
+        
+        # Template charts with various configurations
+        helm template test-release ./charts/parallax --set image.tag=test
+        helm template test-release ./charts/parallax --set installCRDs=false --set replicaCount=2
+        helm template test-crds ./charts/parallax-crds
+        
+        echo "✅ All chart validation tests passed"
 
-    - name: Run E2E tests (with isolated cluster)
+  e2e-summary:
+    name: E2E Summary
+    runs-on: ubuntu-latest
+    needs: [detect-e2e-changes, api-postgres-e2e, integration-e2e, helm-e2e, validation-e2e]
+    if: always()
+    steps:
+    - name: Report E2E results
       run: |
-        make test-e2e E2E_CLUSTER_NAME=parallax-ci-e2e
-      env:
-        IMG: parallax:ci-test
+        if [[ "${{ needs.detect-e2e-changes.outputs.e2e-needed }}" == "false" ]]; then
+          echo "⏭️ Comprehensive E2E tests skipped - only documentation changes detected"
+        else
+          echo "📊 Comprehensive E2E Test Results:"
+          echo "API & PostgreSQL Tests: ${{ needs.api-postgres-e2e.result }}"
+          echo "Integration Tests: ${{ needs.integration-e2e.result }}"
+          echo "Helm Tests: ${{ needs.helm-e2e.result }}"
+          echo "Validation Tests: ${{ needs.validation-e2e.result }}"
+          
+          if [[ "${{ needs.api-postgres-e2e.result }}" == "success" && \
+                "${{ needs.integration-e2e.result }}" == "success" && \
+                "${{ needs.helm-e2e.result }}" == "success" && \
+                "${{ needs.validation-e2e.result }}" == "success" ]]; then
+            echo "✅ All comprehensive E2E tests passed!"
+            echo "🎉 Parallax is ready for production deployment"
+          else
+            echo "❌ Some comprehensive E2E tests failed"
+            exit 1
+          fi
+        fi
+
+  test-e2e:
+    name: E2E Tests (Legacy - Disabled)
+    runs-on: ubuntu-latest
+    if: false  # Disabled - replaced by comprehensive E2E tests above
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
 
   build:
     name: Build and Push Container Image
     runs-on: ubuntu-latest
-    needs: [test, lint, validate-manifests]
+    needs: [test, lint, validate-manifests, e2e-summary]
     if: github.event_name != 'pull_request'
     permissions:
       contents: read

@@ -1,0 +1,56 @@
+name: Build Docker Image
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: 'Name of the image to build'
+        required: true
+        type: string
+      context:
+        description: 'Build context path'
+        required: false
+        type: string
+        default: '.'
+      cache-scope:
+        description: 'Cache scope for the build'
+        required: true
+        type: string
+      artifact-name:
+        description: 'Artifact name for the built image'
+        required: true
+        type: string
+      build-args:
+        description: 'Build arguments'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  build:
+    name: Build ${{ inputs.image-name }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build and export image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ inputs.context }}
+        platforms: linux/amd64
+        outputs: type=docker,dest=/tmp/${{ inputs.artifact-name }}.tar
+        tags: ${{ inputs.image-name }}:e2e-test
+        cache-from: type=gha,scope=${{ inputs.cache-scope }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope }}
+        build-args: ${{ inputs.build-args }}
+
+    - name: Upload image artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: /tmp/${{ inputs.artifact-name }}.tar
+        retention-days: 1

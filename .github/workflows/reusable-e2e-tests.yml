@@ -1,0 +1,129 @@
+name: E2E Tests
+
+on:
+  workflow_call:
+    inputs:
+      test-name:
+        description: 'Name of the test suite'
+        required: true
+        type: string
+      test-pattern:
+        description: 'Test pattern to run'
+        required: true
+        type: string
+      cluster-name:
+        description: 'Kind cluster name'
+        required: true
+        type: string
+      timeout-minutes:
+        description: 'Test timeout in minutes'
+        required: false
+        type: number
+        default: 20
+      needs-postgres:
+        description: 'Whether PostgreSQL service is needed'
+        required: false
+        type: boolean
+        default: false
+      needs-api-server:
+        description: 'Whether API server is needed'
+        required: false
+        type: boolean
+        default: false
+      operator-artifact:
+        description: 'Operator image artifact name'
+        required: true
+        type: string
+      api-server-artifact:
+        description: 'API server image artifact name'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  test:
+    name: ${{ inputs.test-name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup test environment
+      uses: ./.github/actions/setup-test-env
+      with:
+        install-kind: 'true'
+        install-helm: 'true'
+
+    - name: Download operator image
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.operator-artifact }}
+
+    - name: Download API server image
+      if: ${{ inputs.needs-api-server }}
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.api-server-artifact }}
+
+    - name: Load images
+      shell: bash
+      run: |
+        docker load -i ${{ inputs.operator-artifact }}.tar
+        if [[ "${{ inputs.needs-api-server }}" == "true" ]]; then
+          docker load -i ${{ inputs.api-server-artifact }}.tar
+        fi
+
+    - name: Set up test infrastructure
+      if: ${{ inputs.needs-postgres || inputs.needs-api-server }}
+      shell: bash
+      run: |
+        if [[ "${{ inputs.needs-postgres }}" == "true" ]]; then
+          PGPASSWORD=testpass psql -h localhost -U testuser -d testdb -f test/e2e/testdata/postgres/init.sql
+        fi
+        
+        if [[ "${{ inputs.needs-api-server }}" == "true" ]]; then
+          docker run -d --name api-server --network host api-server:e2e-test
+          timeout 60s bash -c 'until curl -f http://localhost:8080/health; do sleep 2; done'
+        fi
+
+    - name: Create Kind cluster and deploy operator
+      shell: bash
+      run: |
+        kind create cluster --name ${{ inputs.cluster-name }} --wait 60s
+        kind load docker-image parallax:e2e-test --name ${{ inputs.cluster-name }}
+        make install
+        make deploy IMG=parallax:e2e-test
+        kubectl wait --for=condition=Available deployment/parallax-controller-manager \
+          -n parallax-system --timeout=300s
+
+    - name: Run tests
+      shell: bash
+      run: |
+        export KUBECONFIG="/home/runner/.kube/config"
+        go test ./test/e2e/ -run "${{ inputs.test-pattern }}" -timeout=15m -v
+
+    - name: Cleanup
+      if: always()
+      shell: bash
+      run: |
+        if [[ "${{ inputs.needs-api-server }}" == "true" ]]; then
+          docker stop api-server || true
+          docker rm api-server || true
+        fi
+        kind delete cluster --name ${{ inputs.cluster-name }} || true

@@ -1,0 +1,62 @@
+name: Helm E2E Tests
+
+on:
+  workflow_call:
+    inputs:
+      operator-artifact:
+        description: 'Operator image artifact name'
+        required: true
+        type: string
+
+jobs:
+  helm-tests:
+    name: Helm Tests (${{ matrix.scenario.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - name: "fresh-install-with-crds"
+            test_pattern: "Helm.*Fresh Installation.*with CRDs"
+          - name: "fresh-install-without-crds"
+            test_pattern: "Helm.*Fresh Installation.*without CRDs"
+          - name: "configuration-options"
+            test_pattern: "Helm.*Configuration Options"
+          - name: "upgrade-scenarios"
+            test_pattern: "Helm.*Upgrade Scenarios"
+          - name: "chart-validation"
+            test_pattern: "Helm.*Chart Validation"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup test environment
+      uses: ./.github/actions/setup-test-env
+      with:
+        install-kind: 'true'
+        install-helm: 'true'
+
+    - name: Download operator image
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.operator-artifact }}
+
+    - name: Load operator image
+      run: docker load -i ${{ inputs.operator-artifact }}.tar
+
+    - name: Create Kind cluster
+      run: |
+        kind create cluster --name helm-${{ matrix.scenario.name }} --wait 60s
+        kind load docker-image parallax:e2e-test --name helm-${{ matrix.scenario.name }}
+
+    - name: Run Helm test - ${{ matrix.scenario.name }}
+      run: |
+        export KUBECONFIG="/home/runner/.kube/config"
+        go test ./test/e2e/ -run "${{ matrix.scenario.test_pattern }}" -timeout=10m -v
+
+    - name: Cleanup
+      if: always()
+      run: |
+        kind delete cluster --name helm-${{ matrix.scenario.name }} || true

@@ -119,11 +119,11 @@ EOF
     sleep 15
     
     # Check if ConfigMap was created
-    if kubectl get configmap test-fruits-items -n "$TEST_NAMESPACE" >/dev/null 2>&1; then
+    if kubectl get configmap test-fruits -n "$TEST_NAMESPACE" >/dev/null 2>&1; then
         success "ListSource ConfigMap created successfully"
         
         # Verify content
-        ITEMS=$(kubectl get configmap test-fruits-items -n "$TEST_NAMESPACE" -o jsonpath='{.data.items}')
+        ITEMS=$(kubectl get configmap test-fruits -n "$TEST_NAMESPACE" -o jsonpath='{.data.items}')
         if echo "$ITEMS" | grep -q "apple" && echo "$ITEMS" | grep -q "banana" && echo "$ITEMS" | grep -q "orange"; then
             success "ListSource items correctly stored in ConfigMap"
         else

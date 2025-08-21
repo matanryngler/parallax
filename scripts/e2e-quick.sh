@@ -94,7 +94,7 @@ EOF
 
     # Wait briefly and check
     sleep 8
-    if kubectl get configmap quick-test-items -n "$TEST_NAMESPACE" >/dev/null 2>&1; then
+    if kubectl get configmap quick-test -n "$TEST_NAMESPACE" >/dev/null 2>&1; then
         success "ListSource working - ConfigMap created"
     else
         error "ListSource not working - ConfigMap not created"

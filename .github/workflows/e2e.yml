@@ -135,9 +135,9 @@ jobs:
         sleep 10
         
         # Verify ConfigMap was created
-        if kubectl get configmap test-fruits-items -n parallax-test >/dev/null 2>&1; then
+        if kubectl get configmap test-fruits -n parallax-test >/dev/null 2>&1; then
           echo "✅ ListSource ConfigMap created successfully"
-          kubectl get configmap test-fruits-items -n parallax-test -o yaml
+          kubectl get configmap test-fruits -n parallax-test -o yaml
         else
           echo "❌ ListSource ConfigMap not created"
           exit 1

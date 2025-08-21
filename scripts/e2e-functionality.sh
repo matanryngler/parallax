@@ -60,8 +60,29 @@ check_prerequisites() {
 build_and_load_operator() {
     log "Building and loading operator image..."
     
-    log "Building operator image: $OPERATOR_IMAGE"
-    make docker-build IMG="$OPERATOR_IMAGE"
+    log "Building operator image with local caching: $OPERATOR_IMAGE"
+    
+    # Use Docker buildx for better local caching
+    if command -v docker >/dev/null 2>&1 && docker buildx version >/dev/null 2>&1; then
+        log "Using Docker buildx with local caching..."
+        docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --tag "$OPERATOR_IMAGE" \
+            --cache-from type=local,src=/tmp/.buildx-cache \
+            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
+            --build-arg VERSION=e2e-test \
+            --build-arg COMMIT=$(git rev-parse HEAD) \
+            --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+            .
+        
+        # Move cache to avoid growing cache indefinitely
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache 2>/dev/null || true
+    else
+        log "Docker buildx not available, falling back to regular build..."
+        make docker-build IMG="$OPERATOR_IMAGE"
+    fi
     
     log "Loading image into Kind cluster..."
     kind load docker-image "$OPERATOR_IMAGE" --name parallax-e2e-test

@@ -105,6 +105,7 @@ jobs:
         load: true
         tags: parallax:pr-security-scan
         cache-from: type=gha
+        cache-to: type=gha,mode=max
         build-args: |
           VERSION=pr-security-scan
           COMMIT=${{ github.sha }}

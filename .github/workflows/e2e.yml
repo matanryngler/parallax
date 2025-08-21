@@ -92,9 +92,26 @@ jobs:
         kind create cluster --name parallax-e2e --wait 60s
         kubectl cluster-info --context kind-parallax-e2e
 
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
     - name: Build and load operator image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64
+        push: false
+        load: true
+        tags: parallax:e2e-test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          VERSION=e2e-test
+          COMMIT=${{ github.sha }}
+          DATE=${{ github.event.head_commit.timestamp }}
+
+    - name: Load image into Kind cluster
       run: |
-        make docker-build IMG=parallax:e2e-test
         kind load docker-image parallax:e2e-test --name parallax-e2e
 
     - name: Deploy operator
@@ -262,6 +279,9 @@ jobs:
         chmod +x ./kind
         sudo mv ./kind /usr/local/bin/kind
 
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
     - name: Test Helm chart upgrade
       run: |
         kind create cluster --name parallax-upgrade --wait 60s
@@ -269,8 +289,18 @@ jobs:
         # Install previous version (if exists)
         helm repo add parallax https://github.com/matanryngler/parallax/releases/latest/download/ || true
         
-        # Build current version
-        make docker-build IMG=parallax:upgrade-test
+        # Build current version with caching
+        docker buildx build \
+          --platform linux/amd64 \
+          --load \
+          --tag parallax:upgrade-test \
+          --cache-from type=gha \
+          --cache-to type=gha,mode=max \
+          --build-arg VERSION=upgrade-test \
+          --build-arg COMMIT=${{ github.sha }} \
+          --build-arg DATE=${{ github.event.head_commit.timestamp }} \
+          .
+        
         kind load docker-image parallax:upgrade-test --name parallax-upgrade
         
         # Test helm install

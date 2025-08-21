@@ -1,9 +1,8 @@
 FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
-COPY main.go .
-RUN go mod init api-server && \
-    go build -o api-server main.go
+COPY go.mod main.go ./
+RUN go build -o api-server main.go
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates

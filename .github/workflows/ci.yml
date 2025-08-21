@@ -359,14 +359,6 @@ jobs:
           fi
         fi
 
-  test-e2e:
-    name: E2E Tests (Legacy - Disabled)
-    runs-on: ubuntu-latest
-    if: false  # Disabled - replaced by comprehensive E2E tests above
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
   build:
     name: Build and Push Container Image
     runs-on: ubuntu-latest

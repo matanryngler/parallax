@@ -38,7 +38,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 		_, _ = utils.Run(cmd)
 		cmd = exec.Command("helm", "uninstall", "parallax-crds-test", "-n", helmTestNamespace)
 		_, _ = utils.Run(cmd)
-		
+
 		// Clean up namespace
 		cmd = exec.Command("kubectl", "delete", "ns", helmTestNamespace, "--ignore-not-found=true")
 		_, _ = utils.Run(cmd)

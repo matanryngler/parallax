@@ -161,3 +161,8 @@ Charts are automatically synchronized from `config/` using `make sync-all`. Neve
 - Regular security scanning with gosec
 - Container images are signed with cosign
 - Secrets handled securely for API and database authentication
+
+## Important Notes
+
+- **No Attribution**: Never add Claude Code attribution or credit to any commits, code, or documentation in this project
+- All code contributions should appear as if written entirely by the project maintainer

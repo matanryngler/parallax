@@ -133,9 +133,34 @@ make sync-crds
 
 # Sync only RBAC
 make sync-rbac
+
+# Check if sync is needed (used by CI)
+make check-sync
 ```
 
 This ensures the charts always reflect the latest operator permissions and CRD definitions.
+
+### Releasing New Chart Versions
+
+Chart versions are managed manually and tracked in git:
+
+```bash
+# Bump patch version for both charts
+make bump-chart-version
+
+# Bump minor version for both charts  
+make bump-chart-version BUMP=minor
+
+# Bump only the main chart
+make bump-chart-version CHART=parallax
+
+# Or use the script directly
+./scripts/bump-chart-version.sh patch both
+```
+
+The CI will automatically detect chart version bumps and create releases when you push version updates.
+
+**Important**: The CI will only create releases when chart versions are actually bumped in Chart.yaml. If you modify chart content without bumping the version, no release will be created to prevent overriding existing versions.
 
 ### Testing Charts Locally
 

@@ -52,7 +52,13 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 	@$(MAKE) sync-all
 
-##@ Helm Chart Sync
+##@ Helm Chart Management
+
+.PHONY: bump-chart-version
+bump-chart-version: ## Bump chart version (usage: make bump-chart-version BUMP=patch CHART=both).
+	@BUMP_TYPE=$${BUMP:-patch}; \
+	CHART_NAME=$${CHART:-both}; \
+	./scripts/bump-chart-version.sh $$BUMP_TYPE $$CHART_NAME
 
 .PHONY: sync-crds
 sync-crds: ## Sync CRDs from config/crd/bases to helm charts.
@@ -97,6 +103,21 @@ sync-rbac: ## Sync RBAC from config/rbac to helm chart templates.
 .PHONY: sync-all
 sync-all: sync-crds sync-rbac ## Sync all generated manifests to helm charts.
 	@echo "🔄 All manifests synced to Helm charts"
+
+.PHONY: check-sync
+check-sync: ## Check if auto-generated code is up-to-date (used by CI).
+	@echo "🔍 Checking if auto-generated code is up-to-date..."
+	@$(MAKE) sync-all
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "❌ Auto-generated code is out of sync!"; \
+		echo ""; \
+		echo "The following files need to be updated:"; \
+		git status --porcelain; \
+		echo ""; \
+		echo "Please run 'make sync-all' and commit the changes."; \
+		exit 1; \
+	fi
+	@echo "✅ All auto-generated code is up-to-date!"
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.

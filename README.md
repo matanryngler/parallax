@@ -182,11 +182,12 @@ make ci-quick
 # Run all CI checks locally (matches GitHub Actions)
 make ci-all
 
-# Run unit tests only
-make test
+# Unit tests
+make test                       # Run unit tests with coverage
 
-# Run E2E tests (creates isolated Kind cluster)
-make test-e2e
+# E2E tests (see CONTRIBUTING_E2E.md for details)
+make test-e2e                   # Full E2E: setup + test + cleanup
+make test-e2e-quick            # Quick E2E: test existing cluster
 
 # Build the operator
 make build

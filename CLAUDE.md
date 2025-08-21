@@ -23,20 +23,19 @@ make manifests
 
 ### Testing
 ```bash
-# Run unit tests with coverage
-make test
+# Unit tests
+make test                       # Run unit tests with coverage
+make ci-quick                   # Fast: unit tests + linting
+make ci-all                     # Complete: all CI checks
 
-# Run E2E tests (creates isolated Kind cluster named 'parallax-e2e-test')
-make test-e2e
+# E2E tests
+make test-e2e                   # Full E2E: setup cluster + test + cleanup
+make test-e2e-quick            # Quick E2E: test against existing cluster
+make test-e2e-functionality    # Full functionality tests with cluster setup
+make test-e2e-golden           # Manifest validation tests
 
-# Quick CI checks (test + lint)
-make ci-quick
-
-# Full CI checks (matches GitHub Actions)
-make ci-all
-
-# Pre-commit script (same as ci-all)
-./scripts/pre-commit.sh
+# Pre-commit validation
+./scripts/pre-commit.sh         # Same as ci-all
 ```
 
 ### Linting and Validation

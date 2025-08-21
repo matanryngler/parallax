@@ -210,16 +210,42 @@ ci-quick: ci-test ci-lint ## Run quick CI checks (test + lint only).
 E2E_CLUSTER_NAME ?= parallax-e2e-test
 
 .PHONY: test-e2e
-test-e2e: ## Run E2E tests (creates isolated Kind cluster).
-	@echo "🚀 Running E2E tests with isolated cluster..."
+test-e2e: ## Run comprehensive E2E tests (creates isolated Kind cluster).
+	@echo "🚀 Running comprehensive E2E tests with isolated cluster..."
+	@$(MAKE) test-e2e-functionality
+	@echo "✅ All E2E tests completed successfully"
+
+.PHONY: test-e2e-quick
+test-e2e-quick: ## Run quick E2E functionality tests only (no cluster setup/teardown).
+	@echo "⚡ Running quick E2E functionality tests..."
+	@./scripts/e2e-quick.sh
+
+.PHONY: test-e2e-functionality
+test-e2e-functionality: ## Run full E2E functionality tests with cluster setup.
+	@echo "🧪 Running E2E functionality tests with isolated cluster..."
+	@$(MAKE) test-e2e-setup
+	@trap '$(MAKE) test-e2e-cleanup' EXIT; \
+	./scripts/e2e-functionality.sh || (echo "❌ E2E functionality tests failed"; exit 1)
+	@echo "✅ E2E functionality tests completed successfully"
+
+.PHONY: test-e2e-golden
+test-e2e-golden: ## Run golden file tests (manifest validation).
+	@echo "📋 Running golden file tests..."
+	@KUBECONFIG="/tmp/$(E2E_CLUSTER_NAME)-kubeconfig" \
+	go test ./test/e2e/ -run "Golden" -timeout=10m -v || (echo "❌ Golden file tests failed"; exit 1)
+	@echo "✅ Golden file tests completed successfully"
+
+.PHONY: test-e2e-basic
+test-e2e-basic: ## Run basic operator deployment tests (legacy).
+	@echo "🚀 Running basic E2E tests with isolated cluster..."
 	@$(MAKE) test-e2e-setup
 	@trap '$(MAKE) test-e2e-cleanup' EXIT; \
 	E2E_CLUSTER_NAME=$(E2E_CLUSTER_NAME) \
 	KIND_CLUSTER=$(E2E_CLUSTER_NAME) \
 	CERT_MANAGER_INSTALL_SKIP=true \
 	KUBECONFIG="/tmp/$(E2E_CLUSTER_NAME)-kubeconfig" \
-	go test ./test/e2e/ -timeout=30m -v || (echo "❌ E2E tests failed"; exit 1)
-	@echo "✅ E2E tests completed successfully"
+	go test ./test/e2e/ -run "Manager" -timeout=30m -v || (echo "❌ Basic E2E tests failed"; exit 1)
+	@echo "✅ Basic E2E tests completed successfully"
 
 .PHONY: test-e2e-setup
 test-e2e-setup: ## Set up isolated Kind cluster for E2E testing.

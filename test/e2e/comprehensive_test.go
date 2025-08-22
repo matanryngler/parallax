@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -211,10 +212,10 @@ metadata:
 spec:
   type: postgresql
   postgres:
-    connectionString: "host=postgres port=5432 dbname=testdb user=testuser password=testpass sslmode=disable"
+    connectionString: "host=%s port=5432 dbname=testdb user=testuser password=testpass sslmode=disable"
     query: "SELECT name FROM users WHERE active = true ORDER BY name"
   intervalSeconds: 30
-`, comprehensiveTestNamespace)
+`, comprehensiveTestNamespace, getPostgreSQLHost())
 
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(pgSimpleYAML)
@@ -245,10 +246,10 @@ metadata:
 spec:
   type: postgresql
   postgres:
-    connectionString: "host=postgres port=5432 dbname=testdb user=testuser password=testpass sslmode=disable"
+    connectionString: "host=%s port=5432 dbname=testdb user=testuser password=testpass sslmode=disable"
     query: "SELECT t.title FROM tasks t JOIN users u ON t.user_id = u.id WHERE u.active = true AND t.status = 'pending' ORDER BY t.priority DESC"
   intervalSeconds: 30
-`, comprehensiveTestNamespace)
+`, comprehensiveTestNamespace, getPostgreSQLHost())
 
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(pgComplexYAML)
@@ -276,7 +277,7 @@ metadata:
 spec:
   type: postgresql
   postgres:
-    connectionString: "host=postgres port=5432 dbname=testdb sslmode=disable"
+    connectionString: "host=%s port=5432 dbname=testdb sslmode=disable"
     query: "SELECT email FROM users WHERE active = true LIMIT 3"
     auth:
       secretRef:
@@ -284,7 +285,7 @@ spec:
         key: password
       passwordKey: password
   intervalSeconds: 30
-`, comprehensiveTestNamespace)
+`, comprehensiveTestNamespace, getPostgreSQLHost())
 
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(pgAuthYAML)
@@ -393,28 +394,62 @@ func createTestSecrets() {
 }
 
 func startTestInfrastructure() {
-	By("starting test infrastructure with docker-compose")
-	cmd := exec.Command("docker-compose", "-f", "test/e2e/testdata/docker-compose.yml", "up", "-d")
-	_, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred())
+	// Check if running in CI environment (has postgresql service)
+	if isRunningInCI() {
+		By("using CI-provided test infrastructure")
+		
+		By("waiting for API server to be healthy")
+		Eventually(func(g Gomega) {
+			cmd := exec.Command("curl", "-f", "http://localhost:8080/health")
+			_, err := utils.Run(cmd)
+			g.Expect(err).NotTo(HaveOccurred())
+		}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
-	By("waiting for API server to be healthy")
-	Eventually(func(g Gomega) {
-		cmd := exec.Command("curl", "-f", "http://localhost:8080/health")
+		By("waiting for PostgreSQL to be ready")
+		Eventually(func(g Gomega) {
+			cmd := exec.Command("pg_isready", "-h", "localhost", "-p", "5432", "-U", "testuser", "-d", "testdb")
+			_, err := utils.Run(cmd)
+			g.Expect(err).NotTo(HaveOccurred())
+		}, 2*time.Minute, 5*time.Second).Should(Succeed())
+	} else {
+		By("starting local test infrastructure with docker-compose")
+		cmd := exec.Command("docker-compose", "-f", "test/e2e/testdata/docker-compose.yml", "up", "-d")
 		_, err := utils.Run(cmd)
-		g.Expect(err).NotTo(HaveOccurred())
-	}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		Expect(err).NotTo(HaveOccurred())
 
-	By("waiting for PostgreSQL to be ready")
-	Eventually(func(g Gomega) {
-		cmd := exec.Command("docker", "exec", "-i", "postgres", "pg_isready", "-U", "testuser", "-d", "testdb")
-		_, err := utils.Run(cmd)
-		g.Expect(err).NotTo(HaveOccurred())
-	}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		By("waiting for API server to be healthy")
+		Eventually(func(g Gomega) {
+			cmd := exec.Command("curl", "-f", "http://localhost:8080/health")
+			_, err := utils.Run(cmd)
+			g.Expect(err).NotTo(HaveOccurred())
+		}, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+		By("waiting for PostgreSQL to be ready")
+		Eventually(func(g Gomega) {
+			cmd := exec.Command("docker", "exec", "-i", "postgres", "pg_isready", "-U", "testuser", "-d", "testdb")
+			_, err := utils.Run(cmd)
+			g.Expect(err).NotTo(HaveOccurred())
+		}, 2*time.Minute, 5*time.Second).Should(Succeed())
+	}
 }
 
 func stopTestInfrastructure() {
-	By("stopping test infrastructure")
-	cmd := exec.Command("docker-compose", "-f", "test/e2e/testdata/docker-compose.yml", "down", "-v")
-	_, _ = utils.Run(cmd)
+	if !isRunningInCI() {
+		By("stopping test infrastructure")
+		cmd := exec.Command("docker-compose", "-f", "test/e2e/testdata/docker-compose.yml", "down", "-v")
+		_, _ = utils.Run(cmd)
+	}
+	// In CI, infrastructure is managed by the workflow
+}
+
+func isRunningInCI() bool {
+	// Check for GitHub Actions environment
+	return os.Getenv("GITHUB_ACTIONS") == "true"
+}
+
+func getPostgreSQLHost() string {
+	if isRunningInCI() {
+		return "localhost"
+	}
+	return "postgres"
 }

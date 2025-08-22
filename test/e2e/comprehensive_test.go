@@ -74,10 +74,10 @@ metadata:
 spec:
   type: api
   api:
-    url: "http://api-server:8080/simple-array"
+    url: "http://%s:8080/simple-array"
     jsonPath: "$[*]"
   intervalSeconds: 30
-`, comprehensiveTestNamespace)
+`, comprehensiveTestNamespace, getAPIServerHost())
 
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(apiListSourceYAML)
@@ -106,10 +106,10 @@ metadata:
 spec:
   type: api
   api:
-    url: "http://api-server:8080/complex-json"
+    url: "http://%s:8080/complex-json"
     jsonPath: "$.data[*].name"
   intervalSeconds: 30
-`, comprehensiveTestNamespace)
+`, comprehensiveTestNamespace, getAPIServerHost())
 
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(complexAPIYAML)
@@ -138,7 +138,7 @@ metadata:
 spec:
   type: api
   api:
-    url: "http://api-server:8080/auth/basic"
+    url: "http://%s:8080/auth/basic"
     jsonPath: "$[*]"
     auth:
       type: basic
@@ -148,7 +148,7 @@ spec:
       usernameKey: username
       passwordKey: password
   intervalSeconds: 30
-`, comprehensiveTestNamespace)
+`, comprehensiveTestNamespace, getAPIServerHost())
 
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(basicAuthYAML)
@@ -176,12 +176,12 @@ metadata:
 spec:
   type: api
   api:
-    url: "http://api-server:8080/auth/bearer"
+    url: "http://%s:8080/auth/bearer"
     jsonPath: "$[*]"
     headers:
       Authorization: "Bearer test-token-123"
   intervalSeconds: 30
-`, comprehensiveTestNamespace)
+`, comprehensiveTestNamespace, getAPIServerHost())
 
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(bearerAuthYAML)
@@ -446,4 +446,11 @@ func getPostgreSQLHost() string {
 		return "localhost"
 	}
 	return "postgres"
+}
+
+func getAPIServerHost() string {
+	if isRunningInCI() {
+		return "localhost"
+	}
+	return "api-server"
 }

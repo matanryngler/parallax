@@ -116,7 +116,7 @@ jobs:
       shell: bash
       run: |
         export KUBECONFIG="/home/runner/.kube/config"
-        go test ./test/e2e/ -run "${{ inputs.test-pattern }}" -timeout=15m -v
+        go test ./test/e2e/ --ginkgo.focus "${{ inputs.test-pattern }}" -timeout=15m -v
 
     - name: Cleanup
       if: always()

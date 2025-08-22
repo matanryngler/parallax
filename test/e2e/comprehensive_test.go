@@ -397,7 +397,7 @@ func startTestInfrastructure() {
 	// Check if running in CI environment (has postgresql service)
 	if isRunningInCI() {
 		By("using CI-provided test infrastructure")
-		
+
 		By("waiting for API server to be healthy")
 		Eventually(func(g Gomega) {
 			cmd := exec.Command("curl", "-f", "http://localhost:8080/health")

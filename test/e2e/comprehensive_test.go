@@ -442,11 +442,6 @@ func stopTestInfrastructure() {
 	// In CI, infrastructure is managed by the workflow
 }
 
-func isRunningInCI() bool {
-	// Check for GitHub Actions environment
-	return os.Getenv("GITHUB_ACTIONS") == "true"
-}
-
 func getPostgreSQLHost() string {
 	if isRunningInCI() {
 		return "localhost"

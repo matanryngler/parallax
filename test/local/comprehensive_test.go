@@ -14,10 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package e2e
+package local
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -412,7 +413,7 @@ func startTestInfrastructure() {
 		}, 2*time.Minute, 5*time.Second).Should(Succeed())
 	} else {
 		By("starting local test infrastructure with docker-compose")
-		cmd := exec.Command("docker-compose", "-f", "test/e2e/testdata/docker-compose.yml", "up", "-d")
+		cmd := exec.Command("docker-compose", "-f", "test/local/testdata/docker-compose.yml", "up", "-d")
 		_, err := utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -435,10 +436,14 @@ func startTestInfrastructure() {
 func stopTestInfrastructure() {
 	if !isRunningInCI() {
 		By("stopping test infrastructure")
-		cmd := exec.Command("docker-compose", "-f", "test/e2e/testdata/docker-compose.yml", "down", "-v")
+		cmd := exec.Command("docker-compose", "-f", "test/local/testdata/docker-compose.yml", "down", "-v")
 		_, _ = utils.Run(cmd)
 	}
 	// In CI, infrastructure is managed by the workflow
+}
+
+func isRunningInCI() bool {
+	return os.Getenv("CI") == "true" || os.Getenv("GITHUB_ACTIONS") == "true"
 }
 
 func getPostgreSQLHost() string {

@@ -1,0 +1,10 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListSource
+metadata:
+  name: upgrade-test-source
+  namespace: {{NAMESPACE}}
+spec:
+  type: static
+  staticList:
+    - upgrade-item
+  intervalSeconds: 60

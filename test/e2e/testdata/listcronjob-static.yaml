@@ -1,0 +1,17 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListCronJob
+metadata:
+  name: static-cronjob-test
+  namespace: {{NAMESPACE}}
+spec:
+  schedule: "0 */6 * * *"
+  staticList:
+    - "cron-item-1"
+    - "cron-item-2"
+  parallelism: 1
+  template:
+    image: busybox:latest
+    command: ["/bin/sh", "-c", "echo Processing cron item: $ITEM"]
+    envName: ITEM
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1

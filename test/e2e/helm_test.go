@@ -18,7 +18,9 @@ package e2e
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -48,7 +50,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 	SetDefaultEventuallyPollingInterval(10 * time.Second)
 
 	Context("Fresh Installation", func() {
-		It("should install parallax chart with CRDs included", func() {
+		It("should install parallax chart with CRDs and verify functionality", func() {
 			By("creating test namespace")
 			cmd := exec.Command("kubectl", "create", "ns", helmTestNamespace)
 			_, err := utils.Run(cmd)
@@ -87,33 +89,8 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 				g.Expect(output).To(Equal("1"))
 			}).Should(Succeed())
 
-			By("testing basic functionality with test resource")
-			testListSourceYAML := fmt.Sprintf(`
-apiVersion: batchops.io/v1alpha1
-kind: ListSource
-metadata:
-  name: helm-test-source
-  namespace: %s
-spec:
-  type: static
-  staticList:
-    - helm-item-1
-    - helm-item-2
-  intervalSeconds: 60
-`, helmTestNamespace)
-
-			cmd = exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(testListSourceYAML)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-
-			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "configmap", "helm-test-source", "-n", helmTestNamespace, "-o", "jsonpath={.data.items}")
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("helm-item-1"))
-				g.Expect(output).To(ContainSubstring("helm-item-2"))
-			}).Should(Succeed())
+			// Run comprehensive basic functionality tests
+			testBasicFunctionality(helmTestNamespace)
 		})
 
 		It("should install parallax chart without CRDs", func() {
@@ -269,24 +246,8 @@ spec:
 				g.Expect(output).To(Equal("800m"))
 			}).Should(Succeed())
 
-			By("verifying operator still works after upgrade")
-			testListSourceYAML := fmt.Sprintf(`
-apiVersion: batchops.io/v1alpha1
-kind: ListSource
-metadata:
-  name: upgrade-test-source
-  namespace: %s
-spec:
-  type: static
-  staticList:
-    - upgrade-item
-  intervalSeconds: 60
-`, helmTestNamespace)
-
-			cmd = exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(testListSourceYAML)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			By("verifying operator still works after upgrade with simple test")
+			applyTestManifest("listsource-upgrade.yaml", helmTestNamespace)
 
 			Eventually(func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "configmap", "upgrade-test-source", "-n", helmTestNamespace, "-o", "jsonpath={.data.items}")
@@ -333,3 +294,97 @@ spec:
 		})
 	})
 })
+
+// applyTestManifest applies a test manifest from testdata directory with namespace substitution
+func applyTestManifest(filename, namespace string) {
+	manifestPath := filepath.Join("test", "e2e", "testdata", filename)
+	yamlBytes, err := os.ReadFile(manifestPath)
+	Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to read manifest %s", manifestPath))
+
+	// Replace namespace placeholder
+	yamlContent := strings.ReplaceAll(string(yamlBytes), "{{NAMESPACE}}", namespace)
+
+	By(fmt.Sprintf("applying test manifest %s to namespace %s", filename, namespace))
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(yamlContent)
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+// testBasicFunctionality runs comprehensive basic functionality tests against a Helm-deployed operator
+func testBasicFunctionality(namespace string) {
+	By("testing static ListSource creation and ConfigMap generation")
+	applyTestManifest("listsource-static.yaml", namespace)
+
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "configmap", "static-test", "-n", namespace, "-o", "jsonpath={.data.items}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(ContainSubstring("item-1"))
+		g.Expect(output).To(ContainSubstring("item-2"))
+		g.Expect(output).To(ContainSubstring("item-3"))
+	}).Should(Succeed())
+
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "listsource", "static-test", "-n", namespace, "-o", "jsonpath={.status.itemCount}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("3"))
+	}).Should(Succeed())
+
+	By("testing ListJob creation from static list")
+	applyTestManifest("listjob-static.yaml", namespace)
+
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "job", "-l", "listjob=static-job-test", "-n", namespace, "-o", "jsonpath={.items[0].spec.completions}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("2"))
+	}).Should(Succeed())
+
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "job", "-l", "listjob=static-job-test", "-n", namespace, "-o", "jsonpath={.items[0].spec.completionMode}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("Indexed"))
+	}).Should(Succeed())
+
+	By("testing ListJob creation from ListSource reference")
+	applyTestManifest("listsource-ref.yaml", namespace)
+
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "configmap", "ref-source", "-n", namespace)
+		_, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+	}).Should(Succeed())
+
+	applyTestManifest("listjob-ref.yaml", namespace)
+
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "job", "-l", "listjob=ref-job-test", "-n", namespace, "-o", "jsonpath={.items[0].spec.completions}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("3"))
+	}).Should(Succeed())
+
+	By("testing ListCronJob creation")
+	applyTestManifest("listcronjob-static.yaml", namespace)
+
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "cronjob", "-l", "listcronjob=static-cronjob-test", "-n", namespace, "-o", "jsonpath={.items[0].spec.schedule}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("0 */6 * * *"))
+	}).Should(Succeed())
+
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "cronjob", "-l", "listcronjob=static-cronjob-test", "-n", namespace, "-o", "jsonpath={.items[0].spec.jobTemplate.spec.completions}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("2"))
+	}).Should(Succeed())
+
+	By("cleaning up basic functionality test resources")
+	cmd := exec.Command("kubectl", "delete", "listjobs,listsources,listcronjobs,jobs,cronjobs", "--all", "-n", namespace)
+	_, _ = utils.Run(cmd)
+}

@@ -1,0 +1,12 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: ref-job-test
+  namespace: {{NAMESPACE}}
+spec:
+  listSourceRef: ref-source
+  parallelism: 2
+  template:
+    image: busybox:latest
+    command: ["/bin/sh", "-c", "echo Processing referenced item: $ITEM"]
+    envName: ITEM

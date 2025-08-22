@@ -222,6 +222,9 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      listJob.Name,
 			Namespace: req.Namespace,
+			Labels: map[string]string{
+				"listjob": listJob.Name,
+			},
 		},
 		Spec: jobSpec,
 	}

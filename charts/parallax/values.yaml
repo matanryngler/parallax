@@ -50,7 +50,4 @@ operator:
   logLevel: info
   leaderElection: true
   metricsAddr: ":8080"
-  healthProbeAddr: ":8081"
-
-# Whether to install CRDs as part of this chart
-installCRDs: true 
+  healthProbeAddr: ":8081" 

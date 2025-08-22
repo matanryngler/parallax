@@ -56,11 +56,18 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("installing parallax chart with CRDs")
+			By("installing CRDs chart first")
+			cmd = exec.Command("helm", "install", "parallax-crds-test", "./charts/parallax-crds",
+				"-n", helmTestNamespace,
+				"--wait",
+				"--timeout=120s")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("installing parallax operator chart")
 			cmd = exec.Command("helm", "install", "parallax-test", "./charts/parallax",
 				"-n", helmTestNamespace,
 				"--set", "image.tag=e2e-test",
-				"--set", "installCRDs=true",
 				"--wait",
 				"--timeout=300s")
 			output, err := utils.Run(cmd)
@@ -93,7 +100,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			testBasicFunctionality(helmTestNamespace)
 		})
 
-		It("should install parallax chart without CRDs", func() {
+		It("should install parallax chart with separate CRDs chart", func() {
 			By("creating test namespace")
 			cmd := exec.Command("kubectl", "create", "ns", helmTestNamespace)
 			_, err := utils.Run(cmd)
@@ -111,7 +118,6 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			cmd = exec.Command("helm", "install", "parallax-test", "./charts/parallax",
 				"-n", helmTestNamespace,
 				"--set", "image.tag=e2e-test",
-				"--set", "installCRDs=false",
 				"--wait",
 				"--timeout=300s")
 			output, err := utils.Run(cmd)
@@ -282,8 +288,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			By("templating main chart with custom values")
 			cmd = exec.Command("helm", "template", "test-release", "./charts/parallax",
 				"--set", "image.tag=custom-tag",
-				"--set", "replicaCount=2",
-				"--set", "installCRDs=false")
+				"--set", "replicaCount=2")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 

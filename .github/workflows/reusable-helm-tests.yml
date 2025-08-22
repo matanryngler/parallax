@@ -17,10 +17,10 @@ jobs:
       fail-fast: false
       matrix:
         scenario:
-          - name: "fresh-install-with-crds"
+          - name: "fresh-all-in-one-install"
             test_pattern: "should install parallax chart with CRDs and verify functionality"
-          - name: "fresh-install-without-crds"
-            test_pattern: "should install parallax chart without CRDs"
+          - name: "fresh-separate-charts-install"
+            test_pattern: "should install parallax chart with separate CRDs chart"
           - name: "configuration-options"
             test_pattern: "Configuration Options"
           - name: "upgrade-scenarios"

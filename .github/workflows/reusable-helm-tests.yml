@@ -18,15 +18,15 @@ jobs:
       matrix:
         scenario:
           - name: "fresh-install-with-crds"
-            test_pattern: "Helm.*Fresh Installation.*with CRDs"
+            test_pattern: "should install parallax chart with CRDs and verify functionality"
           - name: "fresh-install-without-crds"
-            test_pattern: "Helm.*Fresh Installation.*without CRDs"
+            test_pattern: "should install parallax chart without CRDs"
           - name: "configuration-options"
-            test_pattern: "Helm.*Configuration Options"
+            test_pattern: "Configuration Options"
           - name: "upgrade-scenarios"
-            test_pattern: "Helm.*Upgrade Scenarios"
+            test_pattern: "Upgrade Scenarios"
           - name: "chart-validation"
-            test_pattern: "Helm.*Chart Validation"
+            test_pattern: "Chart Validation"
 
     steps:
     - name: Checkout code
@@ -54,7 +54,7 @@ jobs:
     - name: Run Helm test - ${{ matrix.scenario.name }}
       run: |
         export KUBECONFIG="/home/runner/.kube/config"
-        go test ./test/e2e/ -run "${{ matrix.scenario.test_pattern }}" -timeout=10m -v
+        go test ./test/e2e/ --ginkgo.focus="${{ matrix.scenario.test_pattern }}" -timeout=10m -v
 
     - name: Cleanup
       if: always()

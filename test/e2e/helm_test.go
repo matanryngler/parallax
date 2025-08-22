@@ -88,7 +88,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 
 			By("verifying operator deployment is ready")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "parallax-controller-manager",
+				cmd := exec.Command("kubectl", "get", "deployment", "parallax-test-parallax",
 					"-n", helmTestNamespace, "-o", "jsonpath={.status.readyReplicas}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -124,7 +124,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 
 			By("verifying operator works with separately installed CRDs")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "parallax-controller-manager",
+				cmd := exec.Command("kubectl", "get", "deployment", "parallax-test-parallax",
 					"-n", helmTestNamespace, "-o", "jsonpath={.status.readyReplicas}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -157,7 +157,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 
 			By("verifying custom resource configuration")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "parallax-controller-manager",
+				cmd := exec.Command("kubectl", "get", "deployment", "parallax-test-parallax",
 					"-n", helmTestNamespace, "-o", "jsonpath={.spec.template.spec.containers[0].resources.limits.cpu}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -166,7 +166,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 
 			By("verifying custom memory configuration")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "parallax-controller-manager",
+				cmd := exec.Command("kubectl", "get", "deployment", "parallax-test-parallax",
 					"-n", helmTestNamespace, "-o", "jsonpath={.spec.template.spec.containers[0].resources.requests.memory}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -193,7 +193,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 
 			By("verifying custom service account is used")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "parallax-controller-manager",
+				cmd := exec.Command("kubectl", "get", "deployment", "parallax-test-parallax",
 					"-n", helmTestNamespace, "-o", "jsonpath={.spec.template.spec.serviceAccountName}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -224,7 +224,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 
 			By("verifying initial installation")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "parallax-controller-manager",
+				cmd := exec.Command("kubectl", "get", "deployment", "parallax-test-parallax",
 					"-n", helmTestNamespace, "-o", "jsonpath={.status.readyReplicas}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -245,7 +245,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 
 			By("verifying upgrade applied resource limits")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "parallax-controller-manager",
+				cmd := exec.Command("kubectl", "get", "deployment", "parallax-test-parallax",
 					"-n", helmTestNamespace, "-o", "jsonpath={.spec.template.spec.containers[0].resources.limits.cpu}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())

@@ -116,6 +116,7 @@ jobs:
       shell: bash
       run: |
         export KUBECONFIG="/home/runner/.kube/config"
+        export E2E_CLUSTER_NAME="${{ inputs.cluster-name }}"
         go test ./test/e2e/ --ginkgo.focus "${{ inputs.test-pattern }}" -timeout=15m -v
 
     - name: Cleanup

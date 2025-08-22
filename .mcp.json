@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_TOKEN}", "ghcr.io/github/github-mcp-server"],
+      "env": {}
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp"],
+      "env": {
+        "PLAYWRIGHT_BROWSER": "${PLAYWRIGHT_BROWSER:-chromium}",
+        "PLAYWRIGHT_HEADLESS": "${PLAYWRIGHT_HEADLESS:-true}",
+        "PLAYWRIGHT_USER_DATA_DIR": "${PLAYWRIGHT_USER_DATA_DIR:-${HOME}/.cache/claude-playwright}"
+      }
+    }
+  }
+}

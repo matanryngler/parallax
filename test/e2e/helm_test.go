@@ -65,11 +65,10 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("installing parallax operator chart")
-			cmd = exec.Command("helm", "install", "parallax-test", "./charts/parallax",
-				"-n", helmTestNamespace,
-				"--set", "image.tag=e2e-test",
-				"--wait",
-				"--timeout=300s")
+			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
+			args = append(args, getHelmImageSettings()...)
+			args = append(args, "--wait", "--timeout=300s")
+			cmd = exec.Command("helm", args...)
 			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(output).To(ContainSubstring("STATUS: deployed"))
@@ -115,11 +114,10 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("installing parallax chart without CRDs")
-			cmd = exec.Command("helm", "install", "parallax-test", "./charts/parallax",
-				"-n", helmTestNamespace,
-				"--set", "image.tag=e2e-test",
-				"--wait",
-				"--timeout=300s")
+			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
+			args = append(args, getHelmImageSettings()...)
+			args = append(args, "--wait", "--timeout=300s")
+			cmd = exec.Command("helm", args...)
 			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(output).To(ContainSubstring("STATUS: deployed"))
@@ -143,9 +141,9 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("installing with custom resource limits")
-			cmd = exec.Command("helm", "install", "parallax-test", "./charts/parallax",
-				"-n", helmTestNamespace,
-				"--set", "image.tag=e2e-test",
+			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
+			args = append(args, getHelmImageSettings()...)
+			args = append(args,
 				"--set", "resources.limits.cpu=500m",
 				"--set", "resources.limits.memory=256Mi",
 				"--set", "resources.requests.cpu=100m",
@@ -153,6 +151,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 				"--set", "replicaCount=1",
 				"--wait",
 				"--timeout=300s")
+			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -182,12 +181,13 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("installing with custom service account name")
-			cmd = exec.Command("helm", "install", "parallax-test", "./charts/parallax",
-				"-n", helmTestNamespace,
-				"--set", "image.tag=e2e-test",
+			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
+			args = append(args, getHelmImageSettings()...)
+			args = append(args,
 				"--set", "serviceAccount.name=custom-parallax-sa",
 				"--wait",
 				"--timeout=300s")
+			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -215,11 +215,10 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("installing basic configuration")
-			cmd = exec.Command("helm", "install", "parallax-test", "./charts/parallax",
-				"-n", helmTestNamespace,
-				"--set", "image.tag=e2e-test",
-				"--wait",
-				"--timeout=300s")
+			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
+			args = append(args, getHelmImageSettings()...)
+			args = append(args, "--wait", "--timeout=300s")
+			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -233,13 +232,14 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			}).Should(Succeed())
 
 			By("upgrading with resource limits")
-			cmd = exec.Command("helm", "upgrade", "parallax-test", "./charts/parallax",
-				"-n", helmTestNamespace,
-				"--set", "image.tag=e2e-test",
+			args = []string{"upgrade", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
+			args = append(args, getHelmImageSettings()...)
+			args = append(args,
 				"--set", "resources.limits.cpu=800m",
 				"--set", "resources.limits.memory=512Mi",
 				"--wait",
 				"--timeout=300s")
+			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -314,6 +314,30 @@ func applyTestManifest(filename, namespace string) {
 	cmd.Stdin = strings.NewReader(yamlContent)
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
+}
+
+// getHelmImageSettings returns the correct image settings for Helm installations
+func getHelmImageSettings() []string {
+	repository := os.Getenv("HELM_IMAGE_REPOSITORY")
+	if repository == "" {
+		repository = "ghcr.io/matanryngler/parallax"
+	}
+
+	tag := os.Getenv("HELM_IMAGE_TAG")
+	if tag == "" {
+		tag = "e2e-test"
+	}
+
+	pullPolicy := os.Getenv("HELM_IMAGE_PULL_POLICY")
+	if pullPolicy == "" {
+		pullPolicy = "IfNotPresent"
+	}
+
+	return []string{
+		"--set", fmt.Sprintf("image.repository=%s", repository),
+		"--set", fmt.Sprintf("image.tag=%s", tag),
+		"--set", fmt.Sprintf("image.pullPolicy=%s", pullPolicy),
+	}
 }
 
 // testBasicFunctionality runs comprehensive basic functionality tests against a Helm-deployed operator

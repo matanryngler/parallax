@@ -54,6 +54,9 @@ jobs:
     - name: Run Helm test - ${{ matrix.scenario.name }}
       run: |
         export KUBECONFIG="/home/runner/.kube/config"
+        export HELM_IMAGE_REPOSITORY=parallax
+        export HELM_IMAGE_TAG=e2e-test
+        export HELM_IMAGE_PULL_POLICY=Never
         go test ./test/e2e/ --ginkgo.focus="${{ matrix.scenario.test_pattern }}" -timeout=10m -v
 
     - name: Cleanup

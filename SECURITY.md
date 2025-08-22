@@ -15,7 +15,7 @@ We take security seriously. If you discover a security vulnerability in Parallax
 ### How to Report
 
 1. **Do NOT open a public issue** for security vulnerabilities
-2. Email security concerns to: security@example.com (update with your actual email) 
+2. Email security concerns to: matanryngler@gmail.com 
 3. Include as much detail as possible:
    - Description of the vulnerability
    - Steps to reproduce
@@ -58,7 +58,7 @@ We follow responsible disclosure practices:
 ## Security Contact
 
 For security-related questions or concerns:
-- Security Email: security@example.com (update with your actual email)
+- Security Email: matanryngler@gmail.com
 - Response Time: 2 business days
 - PGP Key: [Optional - provide if available]
 

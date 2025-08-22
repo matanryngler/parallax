@@ -270,7 +270,7 @@ jobs:
     uses: ./.github/workflows/reusable-e2e-tests.yml
     with:
       test-name: 'API & PostgreSQL Tests'
-      test-pattern: 'Comprehensive.*API|Comprehensive.*PostgreSQL'
+      test-pattern: 'API ListSource Tests|PostgreSQL ListSource Tests'
       cluster-name: 'api-postgres-test'
       timeout-minutes: 25
       needs-postgres: true
@@ -285,7 +285,7 @@ jobs:
     uses: ./.github/workflows/reusable-e2e-tests.yml
     with:
       test-name: 'Integration Tests'
-      test-pattern: 'Comprehensive.*Integration'
+      test-pattern: 'Integration Tests'
       cluster-name: 'integration-test'
       timeout-minutes: 20
       needs-postgres: true

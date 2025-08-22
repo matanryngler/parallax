@@ -61,13 +61,11 @@ bump-chart-version: ## Bump chart version (usage: make bump-chart-version BUMP=p
 	./scripts/bump-chart-version.sh $$BUMP_TYPE $$CHART_NAME
 
 .PHONY: sync-crds
-sync-crds: ## Sync CRDs from config/crd/bases to helm charts.
-	@echo "📋 Syncing CRDs to Helm charts..."
-	@mkdir -p charts/parallax/crds
+sync-crds: ## Sync CRDs from config/crd/bases to parallax-crds chart only.
+	@echo "📋 Syncing CRDs to parallax-crds chart..."
 	@mkdir -p charts/parallax-crds/templates
-	@cp config/crd/bases/*.yaml charts/parallax/crds/
 	@cp config/crd/bases/*.yaml charts/parallax-crds/templates/
-	@echo "✅ CRDs synced to both charts"
+	@echo "✅ CRDs synced to parallax-crds chart"
 
 .PHONY: sync-rbac
 sync-rbac: ## Sync RBAC from config/rbac to helm chart templates.

@@ -3,14 +3,12 @@ name: 🚀 Parallax CI/CD
 # Dynamic run name for easy traceability
 run-name: >
   ${{ github.event_name == 'pull_request' && format('PR #{0}: {1} by @{2}', github.event.number, github.event.pull_request.title, github.actor) ||
-      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && format('Release {0} by @{1}', github.ref_name, github.actor) ||
       github.event_name == 'push' && format('Push to {0} by @{1} ({2})', github.ref_name, github.actor, github.event.head_commit.message) ||
       format('{0} on {1} by @{2}', github.event_name, github.ref_name, github.actor) }}
 
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:

@@ -16,10 +16,10 @@ The main chart that installs the Parallax operator including:
 **Quick Start:**
 ```bash
 # Step 1: Install CRDs first
-helm install parallax-crds https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-crds-0.1.0.tgz
+helm install parallax-crds https://github.com/matanryngler/parallax/releases/latest/download/parallax-crds-0.1.0.tgz
 
 # Step 2: Install operator
-helm install parallax https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-0.1.0.tgz
+helm install parallax https://github.com/matanryngler/parallax/releases/latest/download/parallax-0.1.0.tgz
 
 # Or install from source
 helm install parallax-crds ./charts/parallax-crds
@@ -56,10 +56,10 @@ helm install parallax ./charts/parallax
 ### Option 2: GitHub Releases
 ```bash
 # Step 1: Install CRDs
-helm install parallax-crds https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-crds-0.1.0.tgz
+helm install parallax-crds https://github.com/matanryngler/parallax/releases/latest/download/parallax-crds-0.1.0.tgz
 
 # Step 2: Install operator
-helm install parallax https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-0.1.0.tgz
+helm install parallax https://github.com/matanryngler/parallax/releases/latest/download/parallax-0.1.0.tgz
 ```
 
 

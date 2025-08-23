@@ -26,7 +26,7 @@ This directory contains comprehensive integration tests that require external se
 3. **Deploy operator:**
    ```bash
    make install
-   make deploy IMG=example.com/parallax:v0.0.1
+   make deploy IMG=example.com/parallax:v0.1.0
    ```
 
 ### Run Tests

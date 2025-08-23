@@ -35,25 +35,59 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 
 	AfterEach(func() {
 		By("cleaning up helm releases and namespace")
-		// Clean up any helm releases with timeout
-		cmd := exec.Command("helm", "uninstall", "parallax-test", "-n", helmTestNamespace, "--timeout=60s")
+		
+		// Delete custom resources FIRST while controllers are still running
+		// This allows finalizers to be processed properly before controllers shutdown
+		By("deleting custom resources while controllers are still active")
+		customResourceCommands := [][]string{
+			{"kubectl", "delete", "listsources", "--all", "-n", helmTestNamespace, "--timeout=60s"},
+			{"kubectl", "delete", "listjobs", "--all", "-n", helmTestNamespace, "--timeout=60s"}, 
+			{"kubectl", "delete", "listcronjobs", "--all", "-n", helmTestNamespace, "--timeout=60s"},
+		}
+		
+		for _, cmdArgs := range customResourceCommands {
+			cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
+			output, err := utils.Run(cmd)
+			if err != nil {
+				_, _ = fmt.Fprintf(GinkgoWriter, "⚠️  Failed to delete resources with %v: %v (output: %s)\n", cmdArgs, err, output)
+			} else {
+				_, _ = fmt.Fprintf(GinkgoWriter, "✅ Deleted resources: %v\n", cmdArgs)
+			}
+		}
+
+		// NOW uninstall helm releases (controllers will shutdown gracefully)
+		cmd := exec.Command("helm", "uninstall", "parallax-test", "-n", helmTestNamespace, "--timeout=30s")
 		_, _ = utils.Run(cmd)
-		cmd = exec.Command("helm", "uninstall", "parallax-crds-test", "-n", helmTestNamespace, "--timeout=60s")
+		cmd = exec.Command("helm", "uninstall", "parallax-crds-test", "-n", helmTestNamespace, "--timeout=30s")
 		_, _ = utils.Run(cmd)
 
-		// Clean up namespace with timeout and force delete if needed
-		cmd = exec.Command("kubectl", "delete", "ns", helmTestNamespace, "--ignore-not-found=true", "--timeout=120s")
+		// Aggressive namespace cleanup with shorter timeouts
+		_, _ = fmt.Fprintf(GinkgoWriter, "🧹 Cleaning up namespace: %s\n", helmTestNamespace)
+
+		// First try: graceful delete with short timeout
+		cmd = exec.Command("kubectl", "delete", "ns", helmTestNamespace, "--ignore-not-found=true", "--timeout=30s")
 		_, err := utils.Run(cmd)
 		if err != nil {
-			// If graceful delete fails, try force delete
-			_, _ = fmt.Fprintf(GinkgoWriter, "⚠️  Graceful namespace deletion failed, attempting force delete\n")
-			cmd = exec.Command("kubectl", "delete", "ns", helmTestNamespace, "--ignore-not-found=true", "--force", "--grace-period=0")
-			_, _ = utils.Run(cmd)
+			_, _ = fmt.Fprintf(GinkgoWriter, "⚠️  Graceful namespace deletion failed, trying force delete\n")
+
+			// Second try: force delete
+			cmd = exec.Command("kubectl", "delete", "ns", helmTestNamespace, "--ignore-not-found=true", "--force", "--grace-period=0", "--timeout=20s")
+			_, err = utils.Run(cmd)
+			if err != nil {
+				_, _ = fmt.Fprintf(GinkgoWriter, "⚠️  Force delete failed, cleaning up finalizers\n")
+
+				// Third try: remove finalizers and force delete
+				cmd = exec.Command("kubectl", "patch", "ns", helmTestNamespace, "-p", `{"metadata":{"finalizers":null}}`, "--type=merge", "--ignore-not-found=true")
+				_, _ = utils.Run(cmd)
+				cmd = exec.Command("kubectl", "delete", "ns", helmTestNamespace, "--ignore-not-found=true", "--force", "--grace-period=0", "--timeout=10s")
+				_, _ = utils.Run(cmd)
+			}
 		}
+		_, _ = fmt.Fprintf(GinkgoWriter, "✅ Namespace cleanup completed\n")
 	})
 
-	SetDefaultEventuallyTimeout(2 * time.Minute)
-	SetDefaultEventuallyPollingInterval(5 * time.Second)
+	SetDefaultEventuallyTimeout(90 * time.Second)
+	SetDefaultEventuallyPollingInterval(3 * time.Second)
 
 	// Add more verbose output for debugging
 	BeforeEach(func() {
@@ -79,14 +113,14 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			cmd = exec.Command("helm", "install", "parallax-crds-test", "./charts/parallax-crds",
 				"-n", helmTestNamespace,
 				"--wait",
-				"--timeout=90s")
+				"--timeout=60s")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("installing parallax operator chart")
 			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
 			args = append(args, getHelmImageSettings()...)
-			args = append(args, "--wait", "--timeout=120s")
+			args = append(args, "--wait", "--timeout=60s")
 			cmd = exec.Command("helm", args...)
 			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -110,14 +144,14 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			cmd = exec.Command("helm", "install", "parallax-crds-test", "./charts/parallax-crds",
 				"-n", helmTestNamespace,
 				"--wait",
-				"--timeout=90s")
+				"--timeout=60s")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("installing parallax chart without CRDs")
 			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
 			args = append(args, getHelmImageSettings()...)
-			args = append(args, "--wait", "--timeout=120s")
+			args = append(args, "--wait", "--timeout=60s")
 			cmd = exec.Command("helm", args...)
 			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -151,7 +185,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 				"--set", "resources.requests.memory=128Mi",
 				"--set", "replicaCount=1",
 				"--wait",
-				"--timeout=120s")
+				"--timeout=60s")
 			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -187,7 +221,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			args = append(args,
 				"--set", "serviceAccount.name=custom-parallax-sa",
 				"--wait",
-				"--timeout=120s")
+				"--timeout=60s")
 			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -219,7 +253,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			cmd = exec.Command("helm", "install", "parallax-crds-test", "./charts/parallax-crds",
 				"-n", helmTestNamespace,
 				"--wait",
-				"--timeout=90s")
+				"--timeout=60s")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -234,7 +268,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			By("installing basic configuration")
 			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
 			args = append(args, getHelmImageSettings()...)
-			args = append(args, "--wait", "--timeout=120s")
+			args = append(args, "--wait", "--timeout=60s")
 			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -263,7 +297,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 				"--set", "resources.limits.cpu=800m",
 				"--set", "resources.limits.memory=512Mi",
 				"--wait",
-				"--timeout=120s")
+				"--timeout=60s")
 			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())

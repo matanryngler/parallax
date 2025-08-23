@@ -35,15 +35,21 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 
 	AfterEach(func() {
 		By("cleaning up helm releases and namespace")
-		// Clean up any helm releases
-		cmd := exec.Command("helm", "uninstall", "parallax-test", "-n", helmTestNamespace)
+		// Clean up any helm releases with timeout
+		cmd := exec.Command("helm", "uninstall", "parallax-test", "-n", helmTestNamespace, "--timeout=60s")
 		_, _ = utils.Run(cmd)
-		cmd = exec.Command("helm", "uninstall", "parallax-crds-test", "-n", helmTestNamespace)
+		cmd = exec.Command("helm", "uninstall", "parallax-crds-test", "-n", helmTestNamespace, "--timeout=60s")
 		_, _ = utils.Run(cmd)
 
-		// Clean up namespace
-		cmd = exec.Command("kubectl", "delete", "ns", helmTestNamespace, "--ignore-not-found=true")
-		_, _ = utils.Run(cmd)
+		// Clean up namespace with timeout and force delete if needed
+		cmd = exec.Command("kubectl", "delete", "ns", helmTestNamespace, "--ignore-not-found=true", "--timeout=120s")
+		_, err := utils.Run(cmd)
+		if err != nil {
+			// If graceful delete fails, try force delete
+			_, _ = fmt.Fprintf(GinkgoWriter, "⚠️  Graceful namespace deletion failed, attempting force delete\n")
+			cmd = exec.Command("kubectl", "delete", "ns", helmTestNamespace, "--ignore-not-found=true", "--force", "--grace-period=0")
+			_, _ = utils.Run(cmd)
+		}
 	})
 
 	SetDefaultEventuallyTimeout(2 * time.Minute)

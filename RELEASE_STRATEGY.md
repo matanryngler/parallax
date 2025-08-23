@@ -170,9 +170,9 @@ Vulnerability Reports: GitHub Security tab
 
 ### 1. Latest Stable Release
 ```bash
-# Helm (recommended)
-helm repo add parallax https://github.com/matanryngler/parallax/releases/latest/download/
-helm install parallax parallax/parallax
+# Helm (recommended - requires both charts)
+helm install parallax-crds https://github.com/matanryngler/parallax/releases/latest/download/parallax-crds-0.1.0.tgz
+helm install parallax https://github.com/matanryngler/parallax/releases/latest/download/parallax-0.1.0.tgz
 
 # Direct container
 docker pull ghcr.io/matanryngler/parallax:latest
@@ -180,7 +180,8 @@ docker pull ghcr.io/matanryngler/parallax:latest
 
 ### 2. Specific Version
 ```bash
-# Specific Helm chart version
+# Specific Helm chart version (install CRDs first)
+helm install parallax-crds https://github.com/matanryngler/parallax/releases/download/v1.2.3/parallax-crds-1.0.5.tgz
 helm install parallax https://github.com/matanryngler/parallax/releases/download/v1.2.3/parallax-1.0.5.tgz
 
 # Specific container version

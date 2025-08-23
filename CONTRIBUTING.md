@@ -22,7 +22,7 @@ By participating in this project, you agree to abide by the [Code of Conduct](CO
 ## Development Environment
 
 1. Install prerequisites:
-   - Go 1.20+
+   - Go 1.23+
    - Docker
    - kubectl
    - kind (for local testing)

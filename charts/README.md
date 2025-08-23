@@ -4,20 +4,25 @@ This directory contains Helm charts for installing the Parallax operator on Kube
 
 ## Charts
 
-### 📦 `parallax` - Full Operator Installation
+### 📦 `parallax` - Operator Installation
 
-The main chart that installs the complete Parallax operator including:
-- Custom Resource Definitions (CRDs)
+The main chart that installs the Parallax operator including:
 - RBAC permissions
 - Controller deployment
 - Service account
 
+**Note**: This chart does NOT include CRDs. You must install the `parallax-crds` chart first.
+
 **Quick Start:**
 ```bash
-# Install from GitHub releases
+# Step 1: Install CRDs first
+helm install parallax-crds https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-crds-0.1.0.tgz
+
+# Step 2: Install operator
 helm install parallax https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-0.1.0.tgz
 
 # Or install from source
+helm install parallax-crds ./charts/parallax-crds
 helm install parallax ./charts/parallax
 ```
 
@@ -33,31 +38,30 @@ A standalone chart that only installs the Custom Resource Definitions. Useful fo
 # Install CRDs first
 helm install parallax-crds ./charts/parallax-crds
 
-# Then install operator without CRDs
-helm install parallax ./charts/parallax --set installCRDs=false
+# Then install operator
+helm install parallax ./charts/parallax
 ```
 
 ## Installation Options
 
-### Option 1: All-in-One (Recommended)
-```bash
-helm install parallax ./charts/parallax
-```
-
-### Option 2: Separate CRDs (Advanced)
+### Option 1: Local Charts (Recommended)
 ```bash
 # Step 1: Install CRDs
 helm install parallax-crds ./charts/parallax-crds
 
 # Step 2: Install operator
-helm install parallax ./charts/parallax --set installCRDs=false
+helm install parallax ./charts/parallax
 ```
 
-### Option 3: From GitHub Releases
+### Option 2: GitHub Releases
 ```bash
-# Download and install specific version
+# Step 1: Install CRDs
+helm install parallax-crds https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-crds-0.1.0.tgz
+
+# Step 2: Install operator
 helm install parallax https://github.com/matanryngler/parallax/releases/download/v0.1.0/parallax-0.1.0.tgz
 ```
+
 
 ## Configuration
 
@@ -74,9 +78,6 @@ resources:
   requests:
     cpu: 200m
     memory: 128Mi
-
-# Disable CRD installation (if using separate CRD chart)
-installCRDs: false
 
 # Operator configuration
 operator:
@@ -97,7 +98,7 @@ helm upgrade parallax ./charts/parallax
 helm upgrade parallax-crds ./charts/parallax-crds
 
 # Then upgrade operator
-helm upgrade parallax ./charts/parallax --set installCRDs=false
+helm upgrade parallax ./charts/parallax
 ```
 
 ## Uninstalling
@@ -190,7 +191,7 @@ helm template test charts/parallax --set installCRDs=false --dry-run
 │  │ • ListSource    │    │ • Controller Deployment        │ │
 │  │ • ListJob       │    │ • RBAC (ClusterRole/Binding)   │ │
 │  │ • ListCronJob   │    │ • ServiceAccount                │ │
-│  │                 │    │ • Optional: CRDs (if enabled)   │ │
+│  │                 │    │                                 │ │
 │  └─────────────────┘    └─────────────────────────────────┘ │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘

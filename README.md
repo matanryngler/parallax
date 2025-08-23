@@ -99,39 +99,34 @@ graph TB
 
 ### Installation
 
-#### Option 1: Helm (Recommended)
+#### Option 1: Helm from GitHub Releases (Recommended)
 
 ```bash
-# Add the Parallax Helm repository
-helm repo add parallax https://github.com/matanryngler/parallax/releases/latest/download/
-helm repo update
+# Step 1: Install CRDs first
+helm install parallax-crds \
+  https://github.com/matanryngler/parallax/releases/latest/download/parallax-crds-0.1.0.tgz
 
-# Install Parallax with default settings
-helm install parallax parallax/parallax
+# Step 2: Install the operator
+helm install parallax \
+  https://github.com/matanryngler/parallax/releases/latest/download/parallax-0.1.0.tgz
 
-# Or customize the installation
-helm install parallax parallax/parallax \
+# Or customize the operator installation
+helm install parallax \
+  https://github.com/matanryngler/parallax/releases/latest/download/parallax-0.1.0.tgz \
   --set replicaCount=2 \
   --set resources.limits.memory=512Mi
 ```
 
-#### Option 2: One-Click Install
+#### Option 2: Local Charts
+
+For development or when you have the repository cloned:
 
 ```bash
-# Latest stable release
-kubectl apply -f https://github.com/matanryngler/parallax/releases/latest/download/parallax.yaml
-```
+# Install CRDs
+helm install parallax-crds ./charts/parallax-crds
 
-#### Option 3: Advanced (Separate CRDs)
-
-For environments where CRDs are managed separately:
-
-```bash
-# Step 1: Install CRDs
-helm install parallax-crds parallax/parallax-crds
-
-# Step 2: Install operator (without CRDs)  
-helm install parallax parallax/parallax --set installCRDs=false
+# Install operator
+helm install parallax ./charts/parallax
 ```
 
 ### Verify Installation
@@ -452,9 +447,9 @@ curl http://localhost:8080/metrics
 ### Verify Image Signatures
 
 ```bash
-# Verify the container image signature
-cosign verify ghcr.io/matanryngler/parallax:latest \
-  --certificate-identity "https://github.com/matanryngler/parallax/.github/workflows/release.yml@refs/tags/v*" \
+# Verify the container image signature (replace v1.2.3 with actual version)
+cosign verify ghcr.io/matanryngler/parallax:v1.2.3 \
+  --certificate-identity "https://github.com/matanryngler/parallax/.github/workflows/release.yml@refs/tags/v1.2.3" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
 ```
 
@@ -467,7 +462,7 @@ cosign verify ghcr.io/matanryngler/parallax:latest \
 - 💬 [GitHub Discussions](https://github.com/matanryngler/parallax/discussions) - Q&A and community
 - 🐛 [Issues](https://github.com/matanryngler/parallax/issues) - Bug reports and feature requests
 - 📖 [Wiki](https://github.com/matanryngler/parallax/wiki) - Detailed documentation
-- 📧 [Security Issues](mailto:security@example.com) - Private security reports
+- 🔒 [Security Issues](https://github.com/matanryngler/parallax/security/advisories) - Private security reports
 
 ### Contributing
 

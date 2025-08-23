@@ -35,16 +35,16 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 
 	AfterEach(func() {
 		By("cleaning up helm releases and namespace")
-		
+
 		// Delete custom resources FIRST while controllers are still running
 		// This allows finalizers to be processed properly before controllers shutdown
 		By("deleting custom resources while controllers are still active")
 		customResourceCommands := [][]string{
 			{"kubectl", "delete", "listsources", "--all", "-n", helmTestNamespace, "--timeout=60s"},
-			{"kubectl", "delete", "listjobs", "--all", "-n", helmTestNamespace, "--timeout=60s"}, 
+			{"kubectl", "delete", "listjobs", "--all", "-n", helmTestNamespace, "--timeout=60s"},
 			{"kubectl", "delete", "listcronjobs", "--all", "-n", helmTestNamespace, "--timeout=60s"},
 		}
-		
+
 		for _, cmdArgs := range customResourceCommands {
 			cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 			output, err := utils.Run(cmd)

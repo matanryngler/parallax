@@ -210,7 +210,9 @@ E2E_CLUSTER_NAME ?= parallax-e2e-test
 .PHONY: test-e2e
 test-e2e: ## Run comprehensive E2E tests (creates isolated Kind cluster).
 	@echo "🚀 Running comprehensive E2E tests with isolated cluster..."
-	@$(MAKE) test-e2e-functionality
+	@$(MAKE) test-e2e-setup
+	@trap '$(MAKE) test-e2e-cleanup' EXIT; \
+	./scripts/e2e-functionality.sh || (echo "❌ E2E tests failed"; exit 1)
 	@echo "✅ All E2E tests completed successfully"
 
 .PHONY: test-e2e-quick
@@ -221,10 +223,7 @@ test-e2e-quick: ## Run quick E2E functionality tests only (no cluster setup/tear
 .PHONY: test-e2e-functionality
 test-e2e-functionality: ## Run full E2E functionality tests with cluster setup.
 	@echo "🧪 Running E2E functionality tests with isolated cluster..."
-	@$(MAKE) test-e2e-setup
-	@trap '$(MAKE) test-e2e-cleanup' EXIT; \
-	./scripts/e2e-functionality.sh || (echo "❌ E2E functionality tests failed"; exit 1)
-	@echo "✅ E2E functionality tests completed successfully"
+	@$(MAKE) test-e2e
 
 .PHONY: test-e2e-golden
 test-e2e-golden: ## Run golden file tests (manifest validation) with cluster setup.

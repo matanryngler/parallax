@@ -137,9 +137,26 @@ Before creating a release:
 
 - [ ] **Tests pass**: All CI checks are green
 - [ ] **Version bumped**: Update version numbers if needed
+- [ ] **Validate release**: Run `./scripts/validate-release.sh v1.2.3` to check for conflicts
 - [ ] **Changelog**: Review what's changed since last release
 - [ ] **Security**: Latest security scans are clean
 - [ ] **Documentation**: README and docs are up to date
+
+### 🔒 Release Validation
+
+Use the validation script to prevent version conflicts:
+
+```bash
+# Validate before creating a release
+./scripts/validate-release.sh v0.1.0
+
+# The script checks:
+# ✅ GitHub release doesn't exist
+# ✅ Container image doesn't exist  
+# ✅ Helm chart versions are available
+# ✅ Version format is valid
+# ✅ Working directory status
+```
 
 ## 📊 Artifact Locations
 

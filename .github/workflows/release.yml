@@ -69,6 +69,22 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Check if container image already exists
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        IMAGE_REPO="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+        
+        echo "🔍 Checking if container image ${IMAGE_REPO}:${VERSION} already exists..."
+        
+        # Check if the specific version tag exists
+        if docker manifest inspect "${IMAGE_REPO}:${VERSION}" >/dev/null 2>&1; then
+          echo "❌ Container image ${IMAGE_REPO}:${VERSION} already exists!"
+          echo "Please use a new version number to avoid overwriting existing images."
+          exit 1
+        fi
+        
+        echo "✅ Container image ${IMAGE_REPO}:${VERSION} is available"
+
   build-and-push:
     name: Build & Push Multi-Platform Images
     runs-on: ubuntu-latest

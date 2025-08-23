@@ -1,0 +1,366 @@
+name: 📦 Helm Chart Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'charts/**/Chart.yaml'
+  workflow_dispatch:
+    inputs:
+      chart:
+        description: 'Which chart to release'
+        required: true
+        type: choice
+        options:
+          - parallax
+          - parallax-crds
+          - both
+      version:
+        description: 'Chart version (optional - will use Chart.yaml version if not specified)'
+        required: false
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  detect-changes:
+    name: Detect Chart Changes
+    runs-on: ubuntu-latest
+    outputs:
+      parallax-changed: ${{ steps.changes.outputs.parallax-changed }}
+      crds-changed: ${{ steps.changes.outputs.crds-changed }}
+      parallax-version: ${{ steps.changes.outputs.parallax-version }}
+      crds-version: ${{ steps.changes.outputs.crds-version }}
+      should-release: ${{ steps.changes.outputs.should-release }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
+
+    - name: Detect chart changes
+      id: changes
+      run: |
+        echo "🔍 Detecting chart changes..."
+        
+        # Get current versions
+        PARALLAX_VERSION=$(grep '^version:' charts/parallax/Chart.yaml | cut -d' ' -f2)
+        CRDS_VERSION=$(grep '^version:' charts/parallax-crds/Chart.yaml | cut -d' ' -f2)
+        
+        echo "parallax-version=${PARALLAX_VERSION}" >> $GITHUB_OUTPUT
+        echo "crds-version=${CRDS_VERSION}" >> $GITHUB_OUTPUT
+        
+        echo "Current chart versions:"
+        echo "  parallax: v${PARALLAX_VERSION}"
+        echo "  parallax-crds: v${CRDS_VERSION}"
+        
+        # Check for manual dispatch
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          case "${{ github.event.inputs.chart }}" in
+            "parallax")
+              echo "parallax-changed=true" >> $GITHUB_OUTPUT
+              echo "crds-changed=false" >> $GITHUB_OUTPUT
+              echo "should-release=true" >> $GITHUB_OUTPUT
+              echo "📦 Manual release requested for parallax chart"
+              ;;
+            "parallax-crds")
+              echo "parallax-changed=false" >> $GITHUB_OUTPUT
+              echo "crds-changed=true" >> $GITHUB_OUTPUT
+              echo "should-release=true" >> $GITHUB_OUTPUT
+              echo "📦 Manual release requested for parallax-crds chart"
+              ;;
+            "both")
+              echo "parallax-changed=true" >> $GITHUB_OUTPUT
+              echo "crds-changed=true" >> $GITHUB_OUTPUT
+              echo "should-release=true" >> $GITHUB_OUTPUT
+              echo "📦 Manual release requested for both charts"
+              ;;
+          esac
+          return 0
+        fi
+        
+        # Auto-detect changes for push events
+        CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+        PARALLAX_CHANGED=false
+        CRDS_CHANGED=false
+        
+        # Check if Chart.yaml versions actually changed
+        if echo "$CHANGED_FILES" | grep "charts/parallax/Chart.yaml" > /dev/null; then
+          PARALLAX_VERSION_CHANGED=$(git diff HEAD~1 HEAD charts/parallax/Chart.yaml | grep "^[+-]version:" || true)
+          if [[ -n "$PARALLAX_VERSION_CHANGED" ]]; then
+            PARALLAX_CHANGED=true
+            echo "📦 parallax chart version changed"
+          fi
+        fi
+        
+        if echo "$CHANGED_FILES" | grep "charts/parallax-crds/Chart.yaml" > /dev/null; then
+          CRDS_VERSION_CHANGED=$(git diff HEAD~1 HEAD charts/parallax-crds/Chart.yaml | grep "^[+-]version:" || true)
+          if [[ -n "$CRDS_VERSION_CHANGED" ]]; then
+            CRDS_CHANGED=true
+            echo "📦 parallax-crds chart version changed"
+          fi
+        fi
+        
+        echo "parallax-changed=${PARALLAX_CHANGED}" >> $GITHUB_OUTPUT
+        echo "crds-changed=${CRDS_CHANGED}" >> $GITHUB_OUTPUT
+        
+        if [[ "$PARALLAX_CHANGED" == "true" || "$CRDS_CHANGED" == "true" ]]; then
+          echo "should-release=true" >> $GITHUB_OUTPUT
+          echo "✅ Chart release will proceed"
+        else
+          echo "should-release=false" >> $GITHUB_OUTPUT
+          echo "⏭️ No chart version changes detected - skipping release"
+        fi
+
+  validate-versions:
+    name: Validate Chart Versions
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.should-release == 'true'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Validate chart versions are new
+      run: |
+        echo "🔍 Validating chart versions are new..."
+        
+        VALIDATE_PARALLAX="${{ needs.detect-changes.outputs.parallax-changed }}"
+        VALIDATE_CRDS="${{ needs.detect-changes.outputs.crds-changed }}"
+        
+        if [[ "$VALIDATE_PARALLAX" == "true" ]]; then
+          VERSION="${{ needs.detect-changes.outputs.parallax-version }}"
+          echo "Checking parallax chart version: v${VERSION}"
+          
+          if gh release view "charts-parallax-v${VERSION}" >/dev/null 2>&1; then
+            echo "❌ parallax chart version v${VERSION} already exists!"
+            exit 1
+          fi
+          echo "✅ parallax chart version v${VERSION} is available"
+        fi
+        
+        if [[ "$VALIDATE_CRDS" == "true" ]]; then
+          VERSION="${{ needs.detect-changes.outputs.crds-version }}"
+          echo "Checking parallax-crds chart version: v${VERSION}"
+          
+          if gh release view "charts-crds-v${VERSION}" >/dev/null 2>&1; then
+            echo "❌ parallax-crds chart version v${VERSION} already exists!"
+            exit 1
+          fi
+          echo "✅ parallax-crds chart version v${VERSION} is available"
+        fi
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-charts:
+    name: Test Chart Installation
+    runs-on: ubuntu-latest
+    needs: [detect-changes, validate-versions]
+    if: needs.detect-changes.outputs.should-release == 'true'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v4
+
+    - name: Set up Kind
+      uses: helm/kind-action@v1
+      with:
+        cluster_name: chart-test
+
+    - name: Test chart installation
+      run: |
+        echo "🧪 Testing chart installation..."
+        
+        # Test CRDs chart first (if changed)
+        if [[ "${{ needs.detect-changes.outputs.crds-changed }}" == "true" ]]; then
+          echo "Testing parallax-crds chart..."
+          helm install test-crds ./charts/parallax-crds --wait --timeout=60s
+          
+          # Verify CRDs are installed
+          kubectl get crd listsources.batchops.io
+          kubectl get crd listjobs.batchops.io
+          kubectl get crd listcronjobs.batchops.io
+          
+          echo "✅ CRDs chart test passed"
+        fi
+        
+        # Test main chart (if changed)
+        if [[ "${{ needs.detect-changes.outputs.parallax-changed }}" == "true" ]]; then
+          echo "Testing parallax chart..."
+          
+          # Install with CRDs if not already installed
+          INSTALL_CRDS="true"
+          if kubectl get crd listsources.batchops.io >/dev/null 2>&1; then
+            INSTALL_CRDS="false"
+            echo "CRDs already exist, installing without CRDs"
+          fi
+          
+          helm install test-parallax ./charts/parallax \
+            --set installCRDs=${INSTALL_CRDS} \
+            --set image.tag=e2e-test \
+            --set image.pullPolicy=IfNotPresent \
+            --wait --timeout=120s
+          
+          # Verify deployment
+          kubectl get deployment test-parallax
+          kubectl rollout status deployment/test-parallax --timeout=60s
+          
+          echo "✅ Main chart test passed"
+        fi
+
+  package-charts:
+    name: Package Helm Charts
+    runs-on: ubuntu-latest
+    needs: [detect-changes, validate-versions, test-charts]
+    if: needs.detect-changes.outputs.should-release == 'true'
+    outputs:
+      parallax-package: ${{ steps.package.outputs.parallax-package }}
+      crds-package: ${{ steps.package.outputs.crds-package }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v4
+
+    - name: Package charts
+      id: package
+      run: |
+        mkdir -p packaged-charts
+        
+        if [[ "${{ needs.detect-changes.outputs.parallax-changed }}" == "true" ]]; then
+          echo "📦 Packaging parallax chart..."
+          helm package charts/parallax --destination packaged-charts/
+          PARALLAX_PKG=$(ls packaged-charts/parallax-*.tgz)
+          echo "parallax-package=${PARALLAX_PKG}" >> $GITHUB_OUTPUT
+          echo "✅ Packaged: ${PARALLAX_PKG}"
+        fi
+        
+        if [[ "${{ needs.detect-changes.outputs.crds-changed }}" == "true" ]]; then
+          echo "📦 Packaging parallax-crds chart..."
+          helm package charts/parallax-crds --destination packaged-charts/
+          CRDS_PKG=$(ls packaged-charts/parallax-crds-*.tgz)
+          echo "crds-package=${CRDS_PKG}" >> $GITHUB_OUTPUT
+          echo "✅ Packaged: ${CRDS_PKG}"
+        fi
+        
+        # List all packages
+        echo "📦 All packaged charts:"
+        ls -la packaged-charts/
+
+    - name: Upload chart packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: chart-packages
+        path: packaged-charts/*.tgz
+
+  create-releases:
+    name: Create Chart Releases
+    runs-on: ubuntu-latest
+    needs: [detect-changes, package-charts]
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download chart packages
+      uses: actions/download-artifact@v4
+      with:
+        name: chart-packages
+        path: charts/
+
+    - name: Create parallax chart release
+      if: needs.detect-changes.outputs.parallax-changed == 'true'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: charts-parallax-v${{ needs.detect-changes.outputs.parallax-version }}
+        name: Parallax Helm Chart v${{ needs.detect-changes.outputs.parallax-version }}
+        body: |
+          # Parallax Helm Chart v${{ needs.detect-changes.outputs.parallax-version }}
+          
+          ## 📦 Installation
+          
+          ```bash
+          # Install the chart
+          helm install parallax https://github.com/${{ github.repository }}/releases/download/charts-parallax-v${{ needs.detect-changes.outputs.parallax-version }}/parallax-${{ needs.detect-changes.outputs.parallax-version }}.tgz
+          
+          # Or add to your repository
+          helm repo add parallax-charts https://github.com/${{ github.repository }}/releases/latest/download/
+          helm install parallax parallax-charts/parallax
+          ```
+          
+          ## 🔧 Configuration
+          
+          See [charts/parallax/README.md](https://github.com/${{ github.repository }}/blob/main/charts/parallax/README.md) for configuration options.
+          
+          ## 📝 Changes
+          
+          This release includes updates to the Parallax operator Helm chart.
+        files: |
+          charts/parallax-${{ needs.detect-changes.outputs.parallax-version }}.tgz
+        generate_release_notes: true
+
+    - name: Create parallax-crds chart release
+      if: needs.detect-changes.outputs.crds-changed == 'true'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: charts-crds-v${{ needs.detect-changes.outputs.crds-version }}
+        name: Parallax CRDs Chart v${{ needs.detect-changes.outputs.crds-version }}
+        body: |
+          # Parallax CRDs Helm Chart v${{ needs.detect-changes.outputs.crds-version }}
+          
+          ## 📦 Installation
+          
+          ```bash
+          # Install CRDs only
+          helm install parallax-crds https://github.com/${{ github.repository }}/releases/download/charts-crds-v${{ needs.detect-changes.outputs.crds-version }}/parallax-crds-${{ needs.detect-changes.outputs.crds-version }}.tgz
+          
+          # Then install the operator without CRDs
+          helm install parallax parallax-charts/parallax --set installCRDs=false
+          ```
+          
+          ## 📋 CustomResourceDefinitions
+          
+          This chart installs the following CRDs:
+          - `ListSource` - Define data sources for lists
+          - `ListJob` - Create parallel processing jobs
+          - `ListCronJob` - Schedule recurring parallel jobs
+          
+          ## 📝 Changes
+          
+          This release includes updates to the Parallax CRDs.
+        files: |
+          charts/parallax-crds-${{ needs.detect-changes.outputs.crds-version }}.tgz
+        generate_release_notes: true
+
+  summary:
+    name: Release Summary
+    runs-on: ubuntu-latest
+    needs: [detect-changes, create-releases]
+    if: always() && needs.detect-changes.outputs.should-release == 'true'
+    steps:
+    - name: Report results
+      run: |
+        echo "📦 Chart Release Summary"
+        echo "======================="
+        
+        if [[ "${{ needs.detect-changes.outputs.parallax-changed }}" == "true" ]]; then
+          echo "✅ parallax chart v${{ needs.detect-changes.outputs.parallax-version }} released"
+          echo "   🔗 https://github.com/${{ github.repository }}/releases/tag/charts-parallax-v${{ needs.detect-changes.outputs.parallax-version }}"
+        fi
+        
+        if [[ "${{ needs.detect-changes.outputs.crds-changed }}" == "true" ]]; then
+          echo "✅ parallax-crds chart v${{ needs.detect-changes.outputs.crds-version }} released"
+          echo "   🔗 https://github.com/${{ github.repository }}/releases/tag/charts-crds-v${{ needs.detect-changes.outputs.crds-version }}"
+        fi
+        
+        echo ""
+        echo "📥 Installation:"
+        echo "helm repo add parallax https://github.com/${{ github.repository }}/releases/latest/download/"
+        echo "helm install parallax parallax/parallax"

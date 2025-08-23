@@ -316,11 +316,11 @@ jobs:
           fi
         fi
 
-  build:
-    name: Build and Push Container Image
+  build-dev:
+    name: Build Development Image
     runs-on: ubuntu-latest
     needs: [test, lint, validate-manifests, e2e-summary]
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
@@ -341,23 +341,21 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Extract metadata
+    - name: Extract metadata for development build
       id: meta
       uses: docker/metadata-action@v5
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
-          type=ref,event=branch
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=semver,pattern={{major}}
-          type=sha,prefix={{branch}}-
+          type=raw,value=main
+          type=raw,value=latest
+          type=sha,prefix=main-
         labels: |
           org.opencontainers.image.title=Parallax Operator
           org.opencontainers.image.description=Kubernetes operator for parallel batch processing
           org.opencontainers.image.vendor=Matan Ryngler
 
-    - name: Build and push container image
+    - name: Build and push development image
       id: build
       uses: docker/build-push-action@v5
       with:
@@ -369,180 +367,14 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
         build-args: |
-          VERSION=${{ steps.meta.outputs.version }}
+          VERSION=main-${{ github.sha }}
           COMMIT=${{ github.sha }}
           DATE=${{ github.event.head_commit.timestamp }}
-
-  sign-image:
-    name: Sign Container Image
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-    steps:
-    - name: Install cosign
-      uses: sigstore/cosign-installer@v3
-
-    - name: Log in to Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Sign container image
-      run: |
-        cosign sign --yes ${{ needs.build.outputs.image-uri }}@${{ needs.build.outputs.image-digest }}
-
-  check-chart-release:
-    name: Check if Chart Release Needed
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    outputs:
-      should-release-charts: ${{ steps.check.outputs.should-release-charts }}
-      main-chart-version: ${{ steps.check.outputs.main-chart-version }}
-      crds-chart-version: ${{ steps.check.outputs.crds-chart-version }}
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 2
-
-    - name: Determine if chart release is needed
-      id: check
-      run: |
-        echo "🔍 Checking if chart release is needed..."
-        
-        # Get current chart versions
-        MAIN_VERSION=$(grep '^version:' charts/parallax/Chart.yaml | cut -d' ' -f2)
-        CRDS_VERSION=$(grep '^version:' charts/parallax-crds/Chart.yaml | cut -d' ' -f2)
-        
-        echo "main-chart-version=${MAIN_VERSION}" >> $GITHUB_OUTPUT
-        echo "crds-chart-version=${CRDS_VERSION}" >> $GITHUB_OUTPUT
-        
-        echo "Current versions:"
-        echo "  parallax: ${MAIN_VERSION}"
-        echo "  parallax-crds: ${CRDS_VERSION}"
-        
-        # Check if Chart.yaml versions actually changed in this push
-        CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-        
-        if echo "$CHANGED_FILES" | grep -E "charts/.*/Chart\.yaml" > /dev/null; then
-          echo "📋 Chart.yaml files changed - checking if versions were bumped..."
-          
-          # Check if the version lines specifically changed
-          MAIN_VERSION_CHANGED=$(git diff HEAD~1 HEAD charts/parallax/Chart.yaml | grep "^[+-]version:" || true)
-          CRDS_VERSION_CHANGED=$(git diff HEAD~1 HEAD charts/parallax-crds/Chart.yaml | grep "^[+-]version:" || true)
-          
-          if [[ -n "$MAIN_VERSION_CHANGED" || -n "$CRDS_VERSION_CHANGED" ]]; then
-            echo "📦 Chart versions were bumped - will create chart release"
-            echo "  Main chart version changed: ${MAIN_VERSION_CHANGED:+YES}"
-            echo "  CRDs chart version changed: ${CRDS_VERSION_CHANGED:+YES}"
-            echo "should-release-charts=true" >> $GITHUB_OUTPUT
-          else
-            echo "⚠️  Chart.yaml files changed but versions were not bumped"
-            echo "📦 No version changes - skipping chart release to avoid overriding existing versions"
-            echo "should-release-charts=false" >> $GITHUB_OUTPUT
-          fi
-        else
-          echo "📦 No Chart.yaml changes - skipping chart release"
-          echo "should-release-charts=false" >> $GITHUB_OUTPUT
-        fi
-
-  release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    needs: [build, sign-image, check-chart-release]
-    if: startsWith(github.ref, 'refs/tags/v') || needs.check-chart-release.outputs.should-release-charts == 'true'
-    permissions:
-      contents: write
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.23'
-        cache: true
-
-    - name: Set up Helm
-      uses: azure/setup-helm@v4
-
-    - name: Validate versions are new
-      run: |
-        echo "🔍 Validating chart versions are new..."
-        
-        MAIN_VERSION=$(grep '^version:' charts/parallax/Chart.yaml | cut -d' ' -f2)
-        CRDS_VERSION=$(grep '^version:' charts/parallax-crds/Chart.yaml | cut -d' ' -f2)
-        
-        echo "Checking if versions already exist as releases:"
-        echo "  parallax: ${MAIN_VERSION}"
-        echo "  parallax-crds: ${CRDS_VERSION}"
-        
-        # Check if these versions already exist as GitHub releases
-        if gh release view "charts-v${MAIN_VERSION}" >/dev/null 2>&1; then
-          echo "❌ Version ${MAIN_VERSION} already exists as a release!"
-          echo "Please bump the chart version to a new version."
-          exit 1
-        fi
-        
-        echo "✅ Versions are new and safe to release"
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Package Helm charts
-      run: |
-        # Package both charts (versions are validated as new)
-        helm package charts/parallax --destination .
-        helm package charts/parallax-crds --destination .
-
-    - name: Generate changelog
-      id: changelog
-      run: |
-        if [[ "${{ github.ref_type }}" == "tag" ]]; then
-          # For git tags, use tag-based changelog
-          echo "## Release ${{ github.ref_name }}" > CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          echo "### What's Changed" >> CHANGELOG.md
-          if git describe --tags --abbrev=0 HEAD^ >/dev/null 2>&1; then
-            git log --pretty=format:"* %s (%h)" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> CHANGELOG.md
-          else
-            git log --pretty=format:"* %s (%h)" HEAD >> CHANGELOG.md
-          fi
-        else
-          # For chart releases, focus on chart changes
-          echo "## Helm Charts Release" > CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          echo "### Chart Versions" >> CHANGELOG.md
-          echo "* **parallax**: v${{ needs.check-chart-release.outputs.main-chart-version }}" >> CHANGELOG.md
-          echo "* **parallax-crds**: v${{ needs.check-chart-release.outputs.crds-chart-version }}" >> CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          echo "### Changes" >> CHANGELOG.md
-          git log --pretty=format:"* %s (%h)" HEAD~3..HEAD | grep -E "(chart|helm|crd)" >> CHANGELOG.md || echo "* Chart updates and improvements" >> CHANGELOG.md
-        fi
-
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('charts-v{0}', needs.check-chart-release.outputs.main-chart-version) }}
-        name: ${{ github.ref_type == 'tag' && github.ref_name || format('Charts Release v{0}', needs.check-chart-release.outputs.main-chart-version) }}
-        body_path: CHANGELOG.md
-        files: |
-          parallax-*.tgz
-          parallax-crds-*.tgz
-        generate_release_notes: true
-        prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') || contains(needs.check-chart-release.outputs.main-chart-version, 'alpha') || contains(needs.check-chart-release.outputs.main-chart-version, 'beta') || contains(needs.check-chart-release.outputs.main-chart-version, 'rc') }}
 
   notify:
     name: Notify on Failure
     runs-on: ubuntu-latest
-    needs: [test, lint, validate-manifests, build]
+    needs: [test, lint, validate-manifests, build-dev]
     if: failure() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     steps:
     - name: Send notification

@@ -146,6 +146,7 @@ func (r *ListSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err != nil {
 		log.Error(err, "Failed to fetch items from source")
 		listSource.Status.Error = err.Error()
+		listSource.Status.State = "Error"
 		listSource.Status.LastUpdateTime = &metav1.Time{Time: time.Now()}
 		if err := r.Status().Update(ctx, &listSource); err != nil {
 			log.Error(err, "Unable to update ListSource status with error information")
@@ -225,10 +226,12 @@ func (r *ListSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		LastUpdateTime: &metav1.Time{Time: time.Now()},
 		ItemCount:      len(items),
 		Error:          "",
+		State:          "Ready",
 	}
 
 	if listSource.Status.ItemCount != newStatus.ItemCount ||
 		listSource.Status.Error != newStatus.Error ||
+		listSource.Status.State != newStatus.State ||
 		listSource.Status.LastUpdateTime == nil ||
 		time.Since(listSource.Status.LastUpdateTime.Time) > time.Second {
 		statusChanged = true

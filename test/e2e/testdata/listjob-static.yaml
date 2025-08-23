@@ -1,0 +1,18 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: static-job-test
+  namespace: {{NAMESPACE}}
+spec:
+  staticList:
+    - "job-item-1"
+    - "job-item-2"
+  parallelism: 1
+  template:
+    image: busybox:latest
+    command: ["/bin/sh", "-c", "echo Processing item: $ITEM && sleep 2"]
+    envName: ITEM
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "32Mi"

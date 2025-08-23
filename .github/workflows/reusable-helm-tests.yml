@@ -1,0 +1,65 @@
+name: Helm E2E Tests
+
+on:
+  workflow_call:
+    inputs:
+      operator-artifact:
+        description: 'Operator image artifact name'
+        required: true
+        type: string
+
+jobs:
+  helm-tests:
+    name: Helm Tests (${{ matrix.scenario.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - name: "fresh-all-in-one-install"
+            test_pattern: "should install parallax chart with CRDs and verify functionality"
+          - name: "fresh-separate-charts-install"
+            test_pattern: "should install parallax chart with separate CRDs chart"
+          - name: "configuration-options"
+            test_pattern: "Configuration Options"
+          - name: "upgrade-scenarios"
+            test_pattern: "Upgrade Scenarios"
+          - name: "chart-validation"
+            test_pattern: "Chart Validation"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup test environment
+      uses: ./.github/actions/setup-test-env
+      with:
+        install-kind: 'true'
+        install-helm: 'true'
+
+    - name: Download operator image
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.operator-artifact }}
+
+    - name: Load operator image
+      run: docker load -i ${{ inputs.operator-artifact }}.tar
+
+    - name: Create Kind cluster
+      run: |
+        kind create cluster --name helm-${{ matrix.scenario.name }} --wait 60s
+        kind load docker-image parallax:e2e-test --name helm-${{ matrix.scenario.name }}
+
+    - name: Run Helm test - ${{ matrix.scenario.name }}
+      run: |
+        export KUBECONFIG="/home/runner/.kube/config"
+        export HELM_IMAGE_REPOSITORY=parallax
+        export HELM_IMAGE_TAG=e2e-test
+        export HELM_IMAGE_PULL_POLICY=Never
+        go test ./test/e2e/ --ginkgo.focus="${{ matrix.scenario.test_pattern }}" -timeout=10m -v
+
+    - name: Cleanup
+      if: always()
+      run: |
+        kind delete cluster --name helm-${{ matrix.scenario.name }} || true

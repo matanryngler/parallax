@@ -1,0 +1,157 @@
+{{/*
+Auto-generated from config/rbac - DO NOT EDIT MANUALLY
+Run 'make sync-rbac' to update
+*/}}
+---
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "parallax.fullname" . }}-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps/status
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batchops.io
+  resources:
+  - listcronjobs
+  - listjobs
+  - listsources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batchops.io
+  resources:
+  - listcronjobs/finalizers
+  - listjobs/finalizers
+  - listsources/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - batchops.io
+  resources:
+  - listcronjobs/status
+  - listjobs/status
+  - listsources/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: parallax
+    app.kubernetes.io/managed-by: kustomize
+  name: {{ include "parallax.fullname" . }}-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "parallax.fullname" . }}-manager-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "parallax.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+---
+# permissions to do leader election.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/name: parallax
+    app.kubernetes.io/managed-by: kustomize
+  name: {{ include "parallax.fullname" . }}-leader-election-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: parallax
+    app.kubernetes.io/managed-by: kustomize
+  name: {{ include "parallax.fullname" . }}-leader-election-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "parallax.fullname" . }}-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "parallax.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}

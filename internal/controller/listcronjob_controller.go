@@ -259,6 +259,9 @@ func (r *ListCronJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      listCronJob.Name,
 			Namespace: req.Namespace,
+			Labels: map[string]string{
+				"listcronjob": listCronJob.Name,
+			},
 		},
 		Spec: batchv1.CronJobSpec{
 			Schedule:                   listCronJob.Spec.Schedule,

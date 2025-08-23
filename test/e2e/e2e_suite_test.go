@@ -39,7 +39,7 @@ var (
 
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
-	projectImage = "example.com/parallax:v0.0.1"
+	projectImage = getProjectImage()
 )
 
 // TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
@@ -53,16 +53,27 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	By("building the manager(Operator) image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
-	_, err := utils.Run(cmd)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
+	// In CI environment, image is already built and loaded by the reusable workflow
+	if !isRunningInCI() {
+		By("building the manager(Operator) image")
+		cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
+		_, err := utils.Run(cmd)
+		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 
-	// TODO(user): If you want to change the e2e test vendor from Kind, ensure the image is
-	// built and available before running the tests. Also, remove the following block.
-	By("loading the manager(Operator) image on Kind")
-	err = utils.LoadImageToKindClusterWithName(projectImage)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
+		// Load the image into the dedicated test cluster
+		By("loading the manager(Operator) image on Kind test cluster")
+		clusterName := os.Getenv("E2E_CLUSTER_NAME")
+		if clusterName == "" {
+			clusterName = "parallax-e2e-test"
+		}
+		// Set KIND_CLUSTER env var so the utils function uses our test cluster
+		os.Setenv("KIND_CLUSTER", clusterName)
+		err = utils.LoadImageToKindClusterWithName(projectImage)
+		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind test cluster")
+	} else {
+		By("using pre-built operator image in CI environment")
+		_, _ = fmt.Fprintf(GinkgoWriter, "Skipping image build and load - using CI-provided image: %s\n", projectImage)
+	}
 
 	// The tests-e2e are intended to run on a temporary cluster that is created and destroyed for testing.
 	// To prevent errors when tests run in environments with CertManager already installed,
@@ -87,3 +98,18 @@ var _ = AfterSuite(func() {
 		utils.UninstallCertManager()
 	}
 })
+
+// isRunningInCI checks if tests are running in GitHub Actions CI environment
+func isRunningInCI() bool {
+	return os.Getenv("GITHUB_ACTIONS") == "true"
+}
+
+// getProjectImage returns the correct image name based on the environment
+func getProjectImage() string {
+	// Check if running in CI environment where image is pre-built and loaded
+	if isRunningInCI() {
+		return "parallax:e2e-test"
+	}
+	// For local development, use the original image name
+	return "example.com/parallax:v0.0.1"
+}

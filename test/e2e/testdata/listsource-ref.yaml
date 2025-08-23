@@ -1,0 +1,11 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListSource
+metadata:
+  name: ref-source
+  namespace: {{NAMESPACE}}
+spec:
+  type: static
+  staticList:
+    - "ref-item-1"
+    - "ref-item-2"
+    - "ref-item-3"

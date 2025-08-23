@@ -95,6 +95,7 @@ type ListSourceStatus struct {
 	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
 	ItemCount      int          `json:"itemCount,omitempty"`
 	Error          string       `json:"error,omitempty"`
+	State          string       `json:"state,omitempty"`
 }
 
 // +kubebuilder:object:root=true

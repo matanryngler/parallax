@@ -1,0 +1,12 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListSource
+metadata:
+  name: fruit-list
+spec:
+  type: api
+  intervalSeconds: 60  # Update every minute
+  api:
+    url: "http://localhost:8080/fruits.json"  # Using localhost for testing
+    jsonPath: "$.fruits[*]"  # Extract items from the fruits array
+    headers:
+      Accept: "application/json" 

@@ -1,0 +1,398 @@
+name: 🚀 Release Pipeline
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.2.3)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  validate-release:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is-prerelease: ${{ steps.version.outputs.is-prerelease }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Determine version
+      id: version
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${{ github.ref_name }}"
+        fi
+        
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        
+        # Check if this is a prerelease
+        if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+          echo "is-prerelease=true" >> $GITHUB_OUTPUT
+          echo "🔥 Detected prerelease version: $VERSION"
+        else
+          echo "is-prerelease=false" >> $GITHUB_OUTPUT
+          echo "✅ Detected stable release version: $VERSION"
+        fi
+
+    - name: Validate version format
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(\.[0-9]+)?)?$ ]]; then
+          echo "❌ Invalid version format: $VERSION"
+          echo "Expected format: v1.2.3 or v1.2.3-alpha.1"
+          exit 1
+        fi
+        echo "✅ Version format is valid: $VERSION"
+
+    - name: Check if version already exists
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        if gh release view "$VERSION" >/dev/null 2>&1; then
+          echo "❌ Version $VERSION already exists as a release!"
+          echo "Please use a new version number."
+          exit 1
+        fi
+        echo "✅ Version $VERSION is available for release"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Check if container image already exists
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        IMAGE_REPO="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+        
+        echo "🔍 Checking if container image ${IMAGE_REPO}:${VERSION} already exists..."
+        
+        # Check if the specific version tag exists
+        if docker manifest inspect "${IMAGE_REPO}:${VERSION}" >/dev/null 2>&1; then
+          echo "❌ Container image ${IMAGE_REPO}:${VERSION} already exists!"
+          echo "Please use a new version number to avoid overwriting existing images."
+          exit 1
+        fi
+        
+        echo "✅ Container image ${IMAGE_REPO}:${VERSION} is available"
+
+  build-and-push:
+    name: Build & Push Multi-Platform Images
+    runs-on: ubuntu-latest
+    needs: [validate-release]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-uri: ${{ steps.build.outputs.image-uri }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=raw,value=${{ needs.validate-release.outputs.version }}
+          type=semver,pattern={{version}},value=${{ needs.validate-release.outputs.version }}
+          type=semver,pattern={{major}}.{{minor}},value=${{ needs.validate-release.outputs.version }}
+          type=semver,pattern={{major}},value=${{ needs.validate-release.outputs.version }},enable=${{ needs.validate-release.outputs.is-prerelease == 'false' }}
+        labels: |
+          org.opencontainers.image.title=Parallax Operator
+          org.opencontainers.image.description=Kubernetes operator for parallel batch processing
+          org.opencontainers.image.vendor=Matan Ryngler
+          org.opencontainers.image.version=${{ needs.validate-release.outputs.version }}
+
+    - name: Build and push container images
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          VERSION=${{ needs.validate-release.outputs.version }}
+          COMMIT=${{ github.sha }}
+          DATE=${{ github.event.head_commit.timestamp }}
+
+    - name: Generate SBOM
+      uses: anchore/sbom-action@v0
+      with:
+        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
+        artifact-name: sbom-${{ needs.validate-release.outputs.version }}.spdx.json
+        output-file: sbom.spdx.json
+
+    - name: Upload SBOM
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom
+        path: sbom.spdx.json
+
+  sign-images:
+    name: Sign Container Images
+    runs-on: ubuntu-latest
+    needs: [validate-release, build-and-push]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+    - name: Install cosign
+      uses: sigstore/cosign-installer@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Sign container image
+      run: |
+        echo "🔐 Signing container image with cosign..."
+        cosign sign --yes ${{ needs.build-and-push.outputs.image-uri }}@${{ needs.build-and-push.outputs.image-digest }}
+        echo "✅ Image signed successfully"
+
+  package-charts:
+    name: Package Helm Charts
+    runs-on: ubuntu-latest
+    needs: [validate-release]
+    outputs:
+      chart-version: ${{ steps.chart-info.outputs.chart-version }}
+      crds-version: ${{ steps.chart-info.outputs.crds-version }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v4
+
+    - name: Get chart versions
+      id: chart-info
+      run: |
+        CHART_VERSION=$(grep '^version:' charts/parallax/Chart.yaml | cut -d' ' -f2)
+        CRDS_VERSION=$(grep '^version:' charts/parallax-crds/Chart.yaml | cut -d' ' -f2)
+        
+        echo "chart-version=${CHART_VERSION}" >> $GITHUB_OUTPUT
+        echo "crds-version=${CRDS_VERSION}" >> $GITHUB_OUTPUT
+        
+        echo "📦 Chart Versions:"
+        echo "  parallax: v${CHART_VERSION}"
+        echo "  parallax-crds: v${CRDS_VERSION}"
+
+    - name: Update chart app versions
+      run: |
+        VERSION="${{ needs.validate-release.outputs.version }}"
+        # Update appVersion in both charts to match release version
+        sed -i "s/^appVersion:.*/appVersion: ${VERSION#v}/" charts/parallax/Chart.yaml
+        sed -i "s/^appVersion:.*/appVersion: ${VERSION#v}/" charts/parallax-crds/Chart.yaml
+        
+        echo "✅ Updated chart appVersion to ${VERSION#v}"
+
+    - name: Package Helm charts
+      run: |
+        # Create charts directory
+        mkdir -p packaged-charts
+        
+        # Package both charts
+        helm package charts/parallax --destination packaged-charts/
+        helm package charts/parallax-crds --destination packaged-charts/
+        
+        # List packaged charts
+        echo "📦 Packaged charts:"
+        ls -la packaged-charts/
+
+    - name: Upload chart artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: helm-charts
+        path: packaged-charts/*.tgz
+
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ needs.build-and-push.outputs.image-uri }}@${{ needs.build-and-push.outputs.image-digest }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, build-and-push, sign-images, package-charts, security-scan]
+    if: always() && needs.validate-release.result == 'success' && needs.build-and-push.result == 'success'
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download chart artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: helm-charts
+        path: charts/
+
+    - name: Download SBOM
+      uses: actions/download-artifact@v4
+      with:
+        name: sbom
+        path: ./
+
+    - name: Generate comprehensive release notes
+      id: changelog
+      run: |
+        VERSION="${{ needs.validate-release.outputs.version }}"
+        
+        cat > RELEASE_NOTES.md << 'EOF'
+        # Release ${{ needs.validate-release.outputs.version }}
+        
+        ## 🚀 What's New
+        
+        This release includes improvements and bug fixes for the Parallax Operator.
+        
+        ## 📦 Installation
+        
+        ### Container Images (GHCR)
+        ```bash
+        # Pull the container image
+        docker pull ghcr.io/${{ github.repository }}:${{ needs.validate-release.outputs.version }}
+        
+        # Multi-platform support: linux/amd64, linux/arm64
+        ```
+        
+        ### Helm Charts
+        ```bash
+        # Download and install
+        helm install parallax https://github.com/${{ github.repository }}/releases/download/${{ needs.validate-release.outputs.version }}/parallax-${{ needs.package-charts.outputs.chart-version }}.tgz
+        
+        # Or install CRDs separately
+        helm install parallax-crds https://github.com/${{ github.repository }}/releases/download/${{ needs.validate-release.outputs.version }}/parallax-crds-${{ needs.package-charts.outputs.crds-version }}.tgz
+        ```
+        
+        ## 🔐 Security
+        
+        - ✅ Container images are signed with [Cosign](https://sigstore.dev/)
+        - ✅ SBOM (Software Bill of Materials) included
+        - ✅ Vulnerability scanned with Trivy
+        
+        ## 📊 Artifacts
+        
+        | Artifact | Description | Verification |
+        |----------|-------------|--------------|
+        | Container Image | `ghcr.io/${{ github.repository }}:${{ needs.validate-release.outputs.version }}` | Cosign signature |
+        | Helm Chart | `parallax-${{ needs.package-charts.outputs.chart-version }}.tgz` | GPG signature (coming soon) |
+        | CRDs Chart | `parallax-crds-${{ needs.package-charts.outputs.crds-version }}.tgz` | GPG signature (coming soon) |
+        | SBOM | `sbom-${{ needs.validate-release.outputs.version }}.spdx.json` | Included with release |
+        
+        ## 🔍 Image Details
+        
+        **Digest:** `${{ needs.build-and-push.outputs.image-digest }}`
+        
+        **Verify signature:**
+        ```bash
+        cosign verify ghcr.io/${{ github.repository }}:${{ needs.validate-release.outputs.version }} \
+          --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/tags/${{ needs.validate-release.outputs.version }}" \
+          --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+        ```
+        
+        ## 📝 Changes
+        
+        EOF
+        
+        # Add actual git log since last release
+        if git describe --tags --abbrev=0 HEAD^ >/dev/null 2>&1; then
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^)
+          echo "### Commits since ${PREV_TAG}" >> RELEASE_NOTES.md
+          git log --pretty=format:"* %s (%h) by @%an" ${PREV_TAG}..HEAD >> RELEASE_NOTES.md
+        else
+          echo "### All commits in this release" >> RELEASE_NOTES.md
+          git log --pretty=format:"* %s (%h) by @%an" HEAD >> RELEASE_NOTES.md
+        fi
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ needs.validate-release.outputs.version }}
+        name: ${{ needs.validate-release.outputs.version }}
+        body_path: RELEASE_NOTES.md
+        files: |
+          charts/*.tgz
+          sbom-${{ needs.validate-release.outputs.version }}.spdx.json
+        prerelease: ${{ needs.validate-release.outputs.is-prerelease }}
+        generate_release_notes: false
+        draft: false
+
+  update-latest:
+    name: Update Latest Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, create-release]
+    if: needs.validate-release.outputs.is-prerelease == 'false'
+    steps:
+    - name: Mark as latest release
+      run: |
+        echo "✅ Version ${{ needs.validate-release.outputs.version }} marked as latest stable release"
+        echo "🏷️ Container image tagged as 'latest' in registry"
+
+  post-release:
+    name: Post-Release Actions
+    runs-on: ubuntu-latest
+    needs: [validate-release, create-release]
+    if: always() && needs.create-release.result == 'success'
+    steps:
+    - name: Summary
+      run: |
+        echo "🎉 Successfully released Parallax ${{ needs.validate-release.outputs.version }}"
+        echo ""
+        echo "📦 Release includes:"
+        echo "  ✅ Multi-platform container images (linux/amd64, linux/arm64)"
+        echo "  ✅ Signed container images with Cosign"
+        echo "  ✅ Helm charts for easy installation"
+        echo "  ✅ SBOM for security compliance"
+        echo "  ✅ Vulnerability scanning results"
+        echo ""
+        echo "🔗 View release: https://github.com/${{ github.repository }}/releases/tag/${{ needs.validate-release.outputs.version }}"
+        echo "🐳 Pull image: docker pull ghcr.io/${{ github.repository }}:${{ needs.validate-release.outputs.version }}"

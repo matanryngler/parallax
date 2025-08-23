@@ -1,0 +1,12 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListSource
+metadata:
+  name: static-test
+  namespace: {{NAMESPACE}}
+spec:
+  type: static
+  staticList:
+    - "item-1"
+    - "item-2" 
+    - "item-3"
+  intervalSeconds: 30

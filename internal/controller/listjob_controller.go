@@ -16,12 +16,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+// ListJobReconciler reconciles a ListJob object
 type ListJobReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
 const listJobFinalizer = "listjob.batchops.io/finalizer"
+
+// +kubebuilder:rbac:groups=batchops.io,resources=listjobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=batchops.io,resources=listjobs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=batchops.io,resources=listjobs/finalizers,verbs=update
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
@@ -214,6 +222,9 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      listJob.Name,
 			Namespace: req.Namespace,
+			Labels: map[string]string{
+				"listjob": listJob.Name,
+			},
 		},
 		Spec: jobSpec,
 	}

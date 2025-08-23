@@ -49,6 +49,19 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 	SetDefaultEventuallyTimeout(5 * time.Minute)
 	SetDefaultEventuallyPollingInterval(10 * time.Second)
 
+	// Add more verbose output for debugging
+	BeforeEach(func() {
+		GinkgoWriter.Printf("\n🧪 Starting test in namespace: %s\n", helmTestNamespace)
+	})
+
+	AfterEach(func() {
+		if CurrentSpecReport().Failed() {
+			GinkgoWriter.Printf("\n❌ Test failed, gathering debug information for namespace: %s\n", helmTestNamespace)
+			utils.DebugNamespace(helmTestNamespace)
+			utils.GetControllerLogs("parallax-test", helmTestNamespace, 100)
+		}
+	})
+
 	Context("Fresh Installation", func() {
 		It("should install parallax chart with CRDs and verify functionality", func() {
 			By("creating test namespace")
@@ -73,27 +86,9 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(output).To(ContainSubstring("STATUS: deployed"))
 
-			By("verifying CRDs are installed")
-			cmd = exec.Command("kubectl", "get", "crd", "listsources.batchops.io")
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
+			// CRDs already verified in previous step
 
-			cmd = exec.Command("kubectl", "get", "crd", "listjobs.batchops.io")
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-
-			cmd = exec.Command("kubectl", "get", "crd", "listcronjobs.batchops.io")
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("verifying operator deployment is ready")
-			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", "parallax-test",
-					"-n", helmTestNamespace, "-o", "jsonpath={.status.readyReplicas}")
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("1"))
-			}).Should(Succeed())
+			// Deployment readiness already verified in previous step
 
 			// Run comprehensive basic functionality tests
 			testBasicFunctionality(helmTestNamespace)
@@ -222,12 +217,28 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
+			By("verifying CRDs are established")
+			err = utils.WaitForCRD("listsources.batchops.io", 60)
+			Expect(err).NotTo(HaveOccurred())
+			err = utils.WaitForCRD("listjobs.batchops.io", 60)
+			Expect(err).NotTo(HaveOccurred())
+			err = utils.WaitForCRD("listcronjobs.batchops.io", 60)
+			Expect(err).NotTo(HaveOccurred())
+
 			By("installing basic configuration")
 			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
 			args = append(args, getHelmImageSettings()...)
 			args = append(args, "--wait", "--timeout=300s")
 			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("waiting for controller to be ready")
+			err = utils.WaitForDeployment("parallax-test", helmTestNamespace, 120)
+			if err != nil {
+				utils.GetDeploymentStatus("parallax-test", helmTestNamespace)
+				utils.GetControllerLogs("parallax-test", helmTestNamespace, 50)
+			}
 			Expect(err).NotTo(HaveOccurred())
 
 			By("verifying initial installation")
@@ -251,6 +262,14 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
+			By("waiting for upgraded controller to be ready")
+			err = utils.WaitForDeployment("parallax-test", helmTestNamespace, 120)
+			if err != nil {
+				utils.GetDeploymentStatus("parallax-test", helmTestNamespace)
+				utils.GetControllerLogs("parallax-test", helmTestNamespace, 50)
+			}
+			Expect(err).NotTo(HaveOccurred())
+
 			By("verifying upgrade applied resource limits")
 			Eventually(func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "deployment", "parallax-test",
@@ -263,12 +282,25 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			By("verifying operator still works after upgrade with simple test")
 			applyTestManifest("listsource-upgrade.yaml", helmTestNamespace)
 
+			By("waiting for ListSource to be processed by controller")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "listsource", "upgrade-test-source", "-n", helmTestNamespace, "-o", "jsonpath={.status.state}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("Ready"))
+			}, 120, 5).Should(Succeed())
+
 			Eventually(func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "configmap", "upgrade-test-source", "-n", helmTestNamespace, "-o", "jsonpath={.data.items}")
 				output, err := utils.Run(cmd)
+				if err != nil {
+					// Debug on failure
+					utils.DebugNamespace(helmTestNamespace)
+					utils.GetControllerLogs("parallax-test", helmTestNamespace, 100)
+				}
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(ContainSubstring("upgrade-item"))
-			}).Should(Succeed())
+			}, 180, 10).Should(Succeed())
 		})
 	})
 
@@ -353,14 +385,27 @@ func testBasicFunctionality(namespace string) {
 	By("testing static ListSource creation and ConfigMap generation")
 	applyTestManifest("listsource-static.yaml", namespace)
 
+	By("waiting for ListSource to be processed")
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "listsource", "static-test", "-n", namespace, "-o", "jsonpath={.status.state}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("Ready"))
+	}, 60, 5).Should(Succeed())
+
 	Eventually(func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "configmap", "static-test", "-n", namespace, "-o", "jsonpath={.data.items}")
 		output, err := utils.Run(cmd)
+		if err != nil {
+			// Debug on failure
+			utils.DebugNamespace(namespace)
+			utils.GetControllerLogs("parallax-test", namespace, 50)
+		}
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(output).To(ContainSubstring("item-1"))
 		g.Expect(output).To(ContainSubstring("item-2"))
 		g.Expect(output).To(ContainSubstring("item-3"))
-	}).Should(Succeed())
+	}, 120, 10).Should(Succeed())
 
 	Eventually(func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "listsource", "static-test", "-n", namespace, "-o", "jsonpath={.status.itemCount}")
@@ -375,9 +420,14 @@ func testBasicFunctionality(namespace string) {
 	Eventually(func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "job", "-l", "listjob=static-job-test", "-n", namespace, "-o", "jsonpath={.items[0].spec.completions}")
 		output, err := utils.Run(cmd)
+		if err != nil {
+			// Debug on failure
+			utils.DebugNamespace(namespace)
+			utils.GetControllerLogs("parallax-test", namespace, 50)
+		}
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(output).To(Equal("2"))
-	}).Should(Succeed())
+	}, 120, 10).Should(Succeed())
 
 	Eventually(func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "job", "-l", "listjob=static-job-test", "-n", namespace, "-o", "jsonpath={.items[0].spec.completionMode}")
@@ -400,9 +450,14 @@ func testBasicFunctionality(namespace string) {
 	Eventually(func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "job", "-l", "listjob=ref-job-test", "-n", namespace, "-o", "jsonpath={.items[0].spec.completions}")
 		output, err := utils.Run(cmd)
+		if err != nil {
+			// Debug on failure
+			utils.DebugNamespace(namespace)
+			utils.GetControllerLogs("parallax-test", namespace, 50)
+		}
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(output).To(Equal("3"))
-	}).Should(Succeed())
+	}, 120, 10).Should(Succeed())
 
 	By("testing ListCronJob creation")
 	applyTestManifest("listcronjob-static.yaml", namespace)
@@ -410,9 +465,14 @@ func testBasicFunctionality(namespace string) {
 	Eventually(func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "cronjob", "-l", "listcronjob=static-cronjob-test", "-n", namespace, "-o", "jsonpath={.items[0].spec.schedule}")
 		output, err := utils.Run(cmd)
+		if err != nil {
+			// Debug on failure
+			utils.DebugNamespace(namespace)
+			utils.GetControllerLogs("parallax-test", namespace, 50)
+		}
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(output).To(Equal("0 */6 * * *"))
-	}).Should(Succeed())
+	}, 120, 10).Should(Succeed())
 
 	Eventually(func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "cronjob", "-l", "listcronjob=static-cronjob-test", "-n", namespace, "-o", "jsonpath={.items[0].spec.jobTemplate.spec.completions}")

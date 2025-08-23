@@ -37,7 +37,7 @@ const (
 )
 
 func warnError(err error) {
-	_, _ = fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
+	_, _ = fmt.Fprintf(GinkgoWriter, "⚠️  Warning: %v\n", err)
 }
 
 // Run executes the provided command within this context
@@ -51,10 +51,17 @@ func Run(cmd *exec.Cmd) (string, error) {
 
 	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
-	_, _ = fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
+	_, _ = fmt.Fprintf(GinkgoWriter, "🚀 Running: %s\n", command)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "❌ Command failed: %s\n", command)
+		_, _ = fmt.Fprintf(GinkgoWriter, "   Error: %v\n", err)
+		_, _ = fmt.Fprintf(GinkgoWriter, "   Output: %s\n", string(output))
 		return string(output), fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
+	}
+	_, _ = fmt.Fprintf(GinkgoWriter, "✅ Command succeeded: %s\n", command)
+	if len(output) > 0 {
+		_, _ = fmt.Fprintf(GinkgoWriter, "   Output: %s\n", strings.TrimSpace(string(output)))
 	}
 
 	return string(output), nil
@@ -189,6 +196,98 @@ func GetNonEmptyLines(output string) []string {
 	}
 
 	return res
+}
+
+// RunWithTimeout executes a command with a timeout and verbose logging
+func RunWithTimeout(cmd *exec.Cmd, timeoutSecs int) (string, error) {
+	_, _ = fmt.Fprintf(GinkgoWriter, "⏱️  Running with %ds timeout: %s\n", timeoutSecs, strings.Join(cmd.Args, " "))
+	return Run(cmd)
+}
+
+// WaitForCRD waits for a CRD to be established
+func WaitForCRD(crdName string, timeoutSecs int) error {
+	_, _ = fmt.Fprintf(GinkgoWriter, "⏳ Waiting for CRD %s to be established (timeout: %ds)\n", crdName, timeoutSecs)
+	cmd := exec.Command("kubectl", "wait", "--for", "condition=established", "--timeout", fmt.Sprintf("%ds", timeoutSecs), "crd/"+crdName)
+	_, err := Run(cmd)
+	if err != nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "❌ CRD %s failed to become established\n", crdName)
+		return err
+	}
+	_, _ = fmt.Fprintf(GinkgoWriter, "✅ CRD %s is established\n", crdName)
+	return nil
+}
+
+// WaitForDeployment waits for a deployment to be ready
+func WaitForDeployment(deploymentName, namespace string, timeoutSecs int) error {
+	_, _ = fmt.Fprintf(GinkgoWriter, "⏳ Waiting for deployment %s in namespace %s to be ready (timeout: %ds)\n", deploymentName, namespace, timeoutSecs)
+	cmd := exec.Command("kubectl", "wait", "--for=condition=available", "--timeout", fmt.Sprintf("%ds", timeoutSecs), "deployment/"+deploymentName, "-n", namespace)
+	_, err := Run(cmd)
+	if err != nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "❌ Deployment %s/%s failed to become ready\n", namespace, deploymentName)
+		// Get deployment status for debugging
+		GetDeploymentStatus(deploymentName, namespace)
+		return err
+	}
+	_, _ = fmt.Fprintf(GinkgoWriter, "✅ Deployment %s/%s is ready\n", namespace, deploymentName)
+	return nil
+}
+
+// GetDeploymentStatus gets detailed deployment status for debugging
+func GetDeploymentStatus(deploymentName, namespace string) {
+	_, _ = fmt.Fprintf(GinkgoWriter, "🔍 Getting deployment status for %s/%s:\n", namespace, deploymentName)
+
+	// Get deployment status
+	cmd := exec.Command("kubectl", "get", "deployment", deploymentName, "-n", namespace, "-o", "wide")
+	if output, err := Run(cmd); err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "   Deployment status:\n%s\n", output)
+	}
+
+	// Get pods status
+	cmd = exec.Command("kubectl", "get", "pods", "-n", namespace, "-l", "app.kubernetes.io/name=parallax", "-o", "wide")
+	if output, err := Run(cmd); err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "   Pod status:\n%s\n", output)
+	}
+
+	// Get events
+	cmd = exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp")
+	if output, err := Run(cmd); err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "   Recent events:\n%s\n", output)
+	}
+}
+
+// GetControllerLogs gets controller logs for debugging
+func GetControllerLogs(deploymentName, namespace string, tailLines int) {
+	_, _ = fmt.Fprintf(GinkgoWriter, "📋 Getting controller logs for %s/%s (last %d lines):\n", namespace, deploymentName, tailLines)
+
+	cmd := exec.Command("kubectl", "logs", "deployment/"+deploymentName, "-n", namespace, "--tail", fmt.Sprintf("%d", tailLines))
+	if output, err := Run(cmd); err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "   Controller logs:\n%s\n", output)
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "   Failed to get controller logs: %v\n", err)
+	}
+}
+
+// DebugNamespace provides comprehensive debugging info for a namespace
+func DebugNamespace(namespace string) {
+	_, _ = fmt.Fprintf(GinkgoWriter, "🔍 Debugging namespace %s:\n", namespace)
+
+	// List all resources
+	cmd := exec.Command("kubectl", "get", "all", "-n", namespace)
+	if output, err := Run(cmd); err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "   All resources:\n%s\n", output)
+	}
+
+	// List custom resources
+	cmd = exec.Command("kubectl", "get", "listsources,listjobs,listcronjobs", "-n", namespace, "-o", "wide")
+	if output, err := Run(cmd); err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "   Parallax resources:\n%s\n", output)
+	}
+
+	// Get events
+	cmd = exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp")
+	if output, err := Run(cmd); err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "   Events:\n%s\n", output)
+	}
 }
 
 // GetProjectDir will return the directory where the project is

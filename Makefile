@@ -227,9 +227,11 @@ test-e2e-functionality: ## Run full E2E functionality tests with cluster setup.
 	@echo "✅ E2E functionality tests completed successfully"
 
 .PHONY: test-e2e-golden
-test-e2e-golden: ## Run golden file tests (manifest validation).
-	@echo "📋 Running golden file tests..."
-	@KUBECONFIG="/tmp/$(E2E_CLUSTER_NAME)-kubeconfig" \
+test-e2e-golden: ## Run golden file tests (manifest validation) with cluster setup.
+	@echo "📋 Running golden file tests with isolated cluster..."
+	@$(MAKE) test-e2e-setup
+	@trap '$(MAKE) test-e2e-cleanup' EXIT; \
+	KUBECONFIG="/tmp/$(E2E_CLUSTER_NAME)-kubeconfig" \
 	go test ./test/e2e/ -run "Golden" -timeout=10m -v || (echo "❌ Golden file tests failed"; exit 1)
 	@echo "✅ Golden file tests completed successfully"
 

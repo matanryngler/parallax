@@ -214,6 +214,14 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
+			By("installing CRDs first")
+			cmd = exec.Command("helm", "install", "parallax-crds-test", "./charts/parallax-crds",
+				"-n", helmTestNamespace,
+				"--wait",
+				"--timeout=120s")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
 			By("installing basic configuration")
 			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
 			args = append(args, getHelmImageSettings()...)

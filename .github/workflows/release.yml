@@ -95,7 +95,7 @@ jobs:
       id-token: write
     outputs:
       image-digest: ${{ steps.build.outputs.digest }}
-      image-uri: ${{ steps.build.outputs.image-uri }}
+      image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -178,7 +178,7 @@ jobs:
     - name: Sign container image
       run: |
         echo "🔐 Signing container image with cosign..."
-        cosign sign --yes ${{ needs.build-and-push.outputs.image-uri }}@${{ needs.build-and-push.outputs.image-digest }}
+        cosign sign --yes ${{ needs.build-and-push.outputs.image-ref }}
         echo "✅ Image signed successfully"
 
   package-charts:
@@ -247,7 +247,7 @@ jobs:
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ needs.build-and-push.outputs.image-uri }}@${{ needs.build-and-push.outputs.image-digest }}
+        image-ref: ${{ needs.build-and-push.outputs.image-ref }}
         format: 'sarif'
         output: 'trivy-results.sarif'
 

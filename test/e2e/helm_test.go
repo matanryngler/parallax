@@ -46,8 +46,8 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 		_, _ = utils.Run(cmd)
 	})
 
-	SetDefaultEventuallyTimeout(5 * time.Minute)
-	SetDefaultEventuallyPollingInterval(10 * time.Second)
+	SetDefaultEventuallyTimeout(2 * time.Minute)
+	SetDefaultEventuallyPollingInterval(5 * time.Second)
 
 	// Add more verbose output for debugging
 	BeforeEach(func() {
@@ -73,14 +73,14 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			cmd = exec.Command("helm", "install", "parallax-crds-test", "./charts/parallax-crds",
 				"-n", helmTestNamespace,
 				"--wait",
-				"--timeout=120s")
+				"--timeout=90s")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("installing parallax operator chart")
 			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
 			args = append(args, getHelmImageSettings()...)
-			args = append(args, "--wait", "--timeout=300s")
+			args = append(args, "--wait", "--timeout=120s")
 			cmd = exec.Command("helm", args...)
 			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -104,14 +104,14 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			cmd = exec.Command("helm", "install", "parallax-crds-test", "./charts/parallax-crds",
 				"-n", helmTestNamespace,
 				"--wait",
-				"--timeout=120s")
+				"--timeout=90s")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("installing parallax chart without CRDs")
 			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
 			args = append(args, getHelmImageSettings()...)
-			args = append(args, "--wait", "--timeout=300s")
+			args = append(args, "--wait", "--timeout=120s")
 			cmd = exec.Command("helm", args...)
 			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -145,7 +145,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 				"--set", "resources.requests.memory=128Mi",
 				"--set", "replicaCount=1",
 				"--wait",
-				"--timeout=300s")
+				"--timeout=120s")
 			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -181,7 +181,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			args = append(args,
 				"--set", "serviceAccount.name=custom-parallax-sa",
 				"--wait",
-				"--timeout=300s")
+				"--timeout=120s")
 			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -213,28 +213,28 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 			cmd = exec.Command("helm", "install", "parallax-crds-test", "./charts/parallax-crds",
 				"-n", helmTestNamespace,
 				"--wait",
-				"--timeout=120s")
+				"--timeout=90s")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("verifying CRDs are established")
-			err = utils.WaitForCRD("listsources.batchops.io", 60)
+			err = utils.WaitForCRD("listsources.batchops.io", 30)
 			Expect(err).NotTo(HaveOccurred())
-			err = utils.WaitForCRD("listjobs.batchops.io", 60)
+			err = utils.WaitForCRD("listjobs.batchops.io", 30)
 			Expect(err).NotTo(HaveOccurred())
-			err = utils.WaitForCRD("listcronjobs.batchops.io", 60)
+			err = utils.WaitForCRD("listcronjobs.batchops.io", 30)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("installing basic configuration")
 			args := []string{"install", "parallax-test", "./charts/parallax", "-n", helmTestNamespace}
 			args = append(args, getHelmImageSettings()...)
-			args = append(args, "--wait", "--timeout=300s")
+			args = append(args, "--wait", "--timeout=120s")
 			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("waiting for controller to be ready")
-			err = utils.WaitForDeployment("parallax-test", helmTestNamespace, 120)
+			err = utils.WaitForDeployment("parallax-test", helmTestNamespace, 60)
 			if err != nil {
 				utils.GetDeploymentStatus("parallax-test", helmTestNamespace)
 				utils.GetControllerLogs("parallax-test", helmTestNamespace, 50)
@@ -257,13 +257,13 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 				"--set", "resources.limits.cpu=800m",
 				"--set", "resources.limits.memory=512Mi",
 				"--wait",
-				"--timeout=300s")
+				"--timeout=120s")
 			cmd = exec.Command("helm", args...)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("waiting for upgraded controller to be ready")
-			err = utils.WaitForDeployment("parallax-test", helmTestNamespace, 120)
+			err = utils.WaitForDeployment("parallax-test", helmTestNamespace, 60)
 			if err != nil {
 				utils.GetDeploymentStatus("parallax-test", helmTestNamespace)
 				utils.GetControllerLogs("parallax-test", helmTestNamespace, 50)
@@ -300,7 +300,7 @@ var _ = Describe("Helm Chart E2E Tests", Ordered, func() {
 				}
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(ContainSubstring("upgrade-item"))
-			}, 180, 10).Should(Succeed())
+			}, 90, 5).Should(Succeed())
 		})
 	})
 

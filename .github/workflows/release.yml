@@ -239,13 +239,13 @@ jobs:
 
     - name: Push Helm charts to GHCR
       run: |
-        # Push parallax chart to GHCR
-        PARALLAX_CHART=$(ls packaged-charts/parallax-*.tgz)
+        # Push parallax chart to GHCR (exclude crds chart with negation)
+        PARALLAX_CHART=$(find packaged-charts -name 'parallax-*.tgz' ! -name '*crds*')
         echo "📦 Pushing parallax chart to GHCR: ${PARALLAX_CHART}"
         helm push "${PARALLAX_CHART}" oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
-        
-        # Push parallax-crds chart to GHCR  
-        CRDS_CHART=$(ls packaged-charts/parallax-crds-*.tgz)
+
+        # Push parallax-crds chart to GHCR
+        CRDS_CHART=$(find packaged-charts -name 'parallax-crds-*.tgz')
         echo "📦 Pushing parallax-crds chart to GHCR: ${CRDS_CHART}"
         helm push "${CRDS_CHART}" oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
         

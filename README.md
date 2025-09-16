@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🌌 Parallax Operator
+<img src="logo.png" alt="Parallax Logo" width="200">
+
+# Parallax Operator
 
 [![GitHub Release](https://img.shields.io/github/v/release/matanryngler/parallax)](https://github.com/matanryngler/parallax/releases/latest)
 [![CI/CD Pipeline](https://github.com/matanryngler/parallax/actions/workflows/ci.yml/badge.svg)](https://github.com/matanryngler/parallax/actions/workflows/ci.yml)

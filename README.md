@@ -9,7 +9,7 @@
 
 [![Container Images](https://img.shields.io/badge/Container-GHCR-blue?logo=docker&logoColor=white)](https://github.com/matanryngler/parallax/pkgs/container/parallax)
 [![Helm Charts](https://img.shields.io/badge/Helm-GHCR%20%2B%20Releases-0f1689?logo=helm&logoColor=white)](https://github.com/matanryngler/parallax/releases)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.20+-326ce5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.29+-326ce5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/matanryngler/parallax)](https://golang.org/)
 
 **Dynamic parallel execution for Kubernetes workloads**
@@ -92,7 +92,7 @@ graph TB
 
 ### Prerequisites
 
-- Kubernetes 1.20+ cluster
+- Kubernetes 1.29+ cluster
 - Helm 3.0+ (recommended)
 - `kubectl` configured
 

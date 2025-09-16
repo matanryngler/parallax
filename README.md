@@ -5,7 +5,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/matanryngler/parallax)](https://github.com/matanryngler/parallax/releases/latest)
 [![CI/CD Pipeline](https://github.com/matanryngler/parallax/actions/workflows/ci.yml/badge.svg)](https://github.com/matanryngler/parallax/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/matanryngler/parallax)](https://goreportcard.com/report/github.com/matanryngler/parallax)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [![Container Images](https://img.shields.io/badge/Container-GHCR-blue?logo=docker&logoColor=white)](https://github.com/matanryngler/parallax/pkgs/container/parallax)
 [![Helm Charts](https://img.shields.io/badge/Helm-GHCR%20%2B%20Releases-0f1689?logo=helm&logoColor=white)](https://github.com/matanryngler/parallax/releases)

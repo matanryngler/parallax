@@ -106,7 +106,9 @@ jobs:
         push: false
         load: true
         tags: parallax:pr-security-scan
-        cache-from: type=gha
+        cache-from: |
+          type=gha
+          type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-main
         cache-to: type=gha,mode=max
         build-args: |
           VERSION=pr-security-scan
@@ -360,8 +362,12 @@ jobs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: |
+          type=gha
+          type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-main
+        cache-to: |
+          type=gha,mode=max
+          type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-main,mode=max
         build-args: |
           VERSION=main-${{ github.sha }}
           COMMIT=${{ github.sha }}

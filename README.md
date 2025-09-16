@@ -4,7 +4,6 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/matanryngler/parallax)](https://github.com/matanryngler/parallax/releases/latest)
 [![CI/CD Pipeline](https://github.com/matanryngler/parallax/actions/workflows/ci.yml/badge.svg)](https://github.com/matanryngler/parallax/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/matanryngler/parallax/branch/main/graph/badge.svg)](https://codecov.io/gh/matanryngler/parallax)
 [![Go Report Card](https://goreportcard.com/badge/github.com/matanryngler/parallax)](https://goreportcard.com/report/github.com/matanryngler/parallax)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 

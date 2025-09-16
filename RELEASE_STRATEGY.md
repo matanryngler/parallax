@@ -9,7 +9,8 @@ Our release strategy follows industry best practices with:
 - **Multi-platform container images** (linux/amd64, linux/arm64)
 - **Signed containers** with Cosign for security
 - **Comprehensive artifacts** including SBOM and vulnerability reports
-- **All artifacts hosted on GitHub Container Registry (GHCR)**
+- **Container images on GitHub Container Registry (GHCR)**
+- **Helm charts distributed via both GHCR OCI and GitHub Releases**
 
 ## 🎯 Release Types
 
@@ -21,7 +22,8 @@ Our release strategy follows industry best practices with:
 
 **What gets released:**
 - ✅ Multi-platform container images (`ghcr.io/matanryngler/parallax:v1.2.3`)
-- ✅ Helm charts (parallax and parallax-crds)
+- ✅ Helm charts to GitHub Releases (parallax and parallax-crds)
+- ✅ Helm charts to GHCR OCI registry (`ghcr.io/matanryngler/charts/parallax`)
 - ✅ SBOM (Software Bill of Materials)
 - ✅ Signed container images with Cosign
 - ✅ Comprehensive release notes
@@ -171,9 +173,12 @@ Platforms: linux/amd64, linux/arm64
 
 ### Helm Charts
 ```
-Location: GitHub Releases
-Files: parallax-<version>.tgz, parallax-crds-<version>.tgz
-Installation: helm install parallax <chart-url>
+Locations:
+  - GHCR OCI Registry: oci://ghcr.io/matanryngler/charts/
+  - GitHub Releases: parallax-<version>.tgz, parallax-crds-<version>.tgz
+Installation:
+  - OCI: helm install parallax oci://ghcr.io/matanryngler/charts/parallax --version <version>
+  - Traditional: helm install parallax <github-release-url>
 ```
 
 ### Security Artifacts
@@ -185,9 +190,19 @@ Vulnerability Reports: GitHub Security tab
 
 ## 🎛️ Installation Methods
 
-### 1. Latest Stable Release
+### 1. Latest Stable Release - GHCR OCI (Recommended)
 ```bash
-# Helm (recommended - requires both charts)
+# Helm from GHCR OCI registry (modern method)
+helm install parallax-crds oci://ghcr.io/matanryngler/charts/parallax-crds --version 0.1.0
+helm install parallax oci://ghcr.io/matanryngler/charts/parallax --version 0.1.0
+
+# Direct container
+docker pull ghcr.io/matanryngler/parallax:latest
+```
+
+### 2. Latest Stable Release - GitHub Releases (Traditional)
+```bash
+# Helm from GitHub releases (traditional method)
 helm install parallax-crds https://github.com/matanryngler/parallax/releases/latest/download/parallax-crds-0.1.0.tgz
 helm install parallax https://github.com/matanryngler/parallax/releases/latest/download/parallax-0.1.0.tgz
 
@@ -195,9 +210,13 @@ helm install parallax https://github.com/matanryngler/parallax/releases/latest/d
 docker pull ghcr.io/matanryngler/parallax:latest
 ```
 
-### 2. Specific Version
+### 3. Specific Version
 ```bash
-# Specific Helm chart version (install CRDs first)
+# Specific Helm chart version from GHCR OCI (recommended)
+helm install parallax-crds oci://ghcr.io/matanryngler/charts/parallax-crds --version 1.0.5
+helm install parallax oci://ghcr.io/matanryngler/charts/parallax --version 1.0.5
+
+# Or specific Helm chart version from GitHub releases
 helm install parallax-crds https://github.com/matanryngler/parallax/releases/download/v1.2.3/parallax-crds-1.0.5.tgz
 helm install parallax https://github.com/matanryngler/parallax/releases/download/v1.2.3/parallax-1.0.5.tgz
 
@@ -205,7 +224,7 @@ helm install parallax https://github.com/matanryngler/parallax/releases/download
 docker pull ghcr.io/matanryngler/parallax:v1.2.3
 ```
 
-### 3. Development Version
+### 4. Development Version
 ```bash
 # Latest development build
 docker pull ghcr.io/matanryngler/parallax:main
@@ -218,11 +237,12 @@ docker pull ghcr.io/matanryngler/parallax:main
 **Triggers**: Git tags `v*`, manual dispatch
 **Jobs**:
 1. **Validate Release** - Check version format and availability
-2. **Build & Push** - Multi-platform container images  
+2. **Build & Push** - Multi-platform container images to GHCR
 3. **Sign Images** - Cosign signatures
 4. **Package Charts** - Helm chart packaging
-5. **Security Scan** - Vulnerability assessment
-6. **Create Release** - GitHub release with artifacts
+5. **Publish to GHCR** - Push Helm charts to GHCR OCI registry
+6. **Security Scan** - Vulnerability assessment
+7. **Create Release** - GitHub release with artifacts
 
 ### Chart Release Workflow (`./.github/workflows/chart-release.yml`)
 
@@ -250,6 +270,7 @@ The new release strategy provides:
 ✅ **Clear separation** between development builds and stable releases
 ✅ **Comprehensive security** with signed images and SBOM
 ✅ **Multi-platform support** for broader deployment options
+✅ **Dual Helm distribution** - GHCR OCI registry + GitHub releases
 ✅ **Independent chart releases** for faster chart updates
 ✅ **Enterprise compliance** with proper artifact management
 

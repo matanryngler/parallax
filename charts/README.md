@@ -15,13 +15,15 @@ The main chart that installs the Parallax operator including:
 
 **Quick Start:**
 ```bash
-# Step 1: Install CRDs first
-helm install parallax-crds https://github.com/matanryngler/parallax/releases/latest/download/parallax-crds-0.1.0.tgz
+# Option 1: GHCR OCI Registry (Recommended)
+helm install parallax-crds oci://ghcr.io/matanryngler/charts/parallax-crds --version 0.1.0
+helm install parallax oci://ghcr.io/matanryngler/charts/parallax --version 0.1.0
 
-# Step 2: Install operator
+# Option 2: GitHub Releases (Traditional)
+helm install parallax-crds https://github.com/matanryngler/parallax/releases/latest/download/parallax-crds-0.1.0.tgz
 helm install parallax https://github.com/matanryngler/parallax/releases/latest/download/parallax-0.1.0.tgz
 
-# Or install from source
+# Option 3: Local Development
 helm install parallax-crds ./charts/parallax-crds
 helm install parallax ./charts/parallax
 ```
@@ -44,22 +46,31 @@ helm install parallax ./charts/parallax
 
 ## Installation Options
 
-### Option 1: Local Charts (Recommended)
+### Option 1: GHCR OCI Registry (Recommended)
 ```bash
 # Step 1: Install CRDs
-helm install parallax-crds ./charts/parallax-crds
+helm install parallax-crds oci://ghcr.io/matanryngler/charts/parallax-crds --version 0.1.0
 
 # Step 2: Install operator
-helm install parallax ./charts/parallax
+helm install parallax oci://ghcr.io/matanryngler/charts/parallax --version 0.1.0
 ```
 
-### Option 2: GitHub Releases
+### Option 2: GitHub Releases (Traditional)
 ```bash
 # Step 1: Install CRDs
 helm install parallax-crds https://github.com/matanryngler/parallax/releases/latest/download/parallax-crds-0.1.0.tgz
 
 # Step 2: Install operator
 helm install parallax https://github.com/matanryngler/parallax/releases/latest/download/parallax-0.1.0.tgz
+```
+
+### Option 3: Local Charts (Development)
+```bash
+# Step 1: Install CRDs
+helm install parallax-crds ./charts/parallax-crds
+
+# Step 2: Install operator
+helm install parallax ./charts/parallax
 ```
 
 

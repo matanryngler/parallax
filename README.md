@@ -9,7 +9,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 [![Container Images](https://img.shields.io/badge/Container-GHCR-blue?logo=docker&logoColor=white)](https://github.com/matanryngler/parallax/pkgs/container/parallax)
-[![Helm Charts](https://img.shields.io/badge/Helm-Charts-0f1689?logo=helm&logoColor=white)](https://github.com/matanryngler/parallax/releases)
+[![Helm Charts](https://img.shields.io/badge/Helm-GHCR%20%2B%20Releases-0f1689?logo=helm&logoColor=white)](https://github.com/matanryngler/parallax/releases)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.20+-326ce5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/matanryngler/parallax)](https://golang.org/)
 
@@ -99,7 +99,26 @@ graph TB
 
 ### Installation
 
-#### Option 1: Helm from GitHub Releases (Recommended)
+#### Option 1: Helm from GHCR OCI Registry (Recommended)
+
+Modern OCI-based installation using GitHub Container Registry:
+
+```bash
+# Step 1: Install CRDs first
+helm install parallax-crds oci://ghcr.io/matanryngler/charts/parallax-crds --version 0.1.0
+
+# Step 2: Install the operator
+helm install parallax oci://ghcr.io/matanryngler/charts/parallax --version 0.1.0
+
+# Or customize the operator installation
+helm install parallax oci://ghcr.io/matanryngler/charts/parallax --version 0.1.0 \
+  --set replicaCount=2 \
+  --set resources.limits.memory=512Mi
+```
+
+#### Option 2: Helm from GitHub Releases (Traditional)
+
+Classic installation method using direct download:
 
 ```bash
 # Step 1: Install CRDs first
@@ -109,15 +128,9 @@ helm install parallax-crds \
 # Step 2: Install the operator
 helm install parallax \
   https://github.com/matanryngler/parallax/releases/latest/download/parallax-0.1.0.tgz
-
-# Or customize the operator installation
-helm install parallax \
-  https://github.com/matanryngler/parallax/releases/latest/download/parallax-0.1.0.tgz \
-  --set replicaCount=2 \
-  --set resources.limits.memory=512Mi
 ```
 
-#### Option 2: Local Charts
+#### Option 3: Local Charts (Development)
 
 For development or when you have the repository cloned:
 

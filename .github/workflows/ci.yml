@@ -3,7 +3,7 @@ name: 🚀 Parallax CI/CD
 # Dynamic run name for easy traceability
 run-name: >
   ${{ github.event_name == 'pull_request' && format('PR #{0}: {1} by @{2}', github.event.number, github.event.pull_request.title, github.actor) ||
-      github.event_name == 'push' && format('Push to {0} by @{1} ({2})', github.ref_name, github.actor, github.event.head_commit.message) ||
+      github.event_name == 'push' && format('Development Build: {0} by @{1}', github.ref_name, github.actor) ||
       format('{0} on {1} by @{2}', github.event_name, github.ref_name, github.actor) }}
 
 on:
@@ -24,9 +24,11 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Full validation for PRs
   test:
     name: Test
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -59,6 +61,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -155,6 +158,7 @@ jobs:
   validate-manifests:
     name: Validate Kubernetes Manifests
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -168,7 +172,7 @@ jobs:
         wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
         tar xf kubeval-linux-amd64.tar.gz
         sudo mv kubeval /usr/local/bin
-        
+
         # Install yamllint for proper YAML validation
         pip install yamllint
 
@@ -206,10 +210,11 @@ jobs:
         kubeval --strict --ignore-missing-schemas config/crd/bases/*.yaml
         echo "✅ All CRDs are valid Kubernetes CustomResourceDefinitions"
 
-  # Comprehensive E2E Tests
+  # E2E Tests for PRs only
   detect-e2e-changes:
     name: Detect E2E Changes
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     outputs:
       e2e-needed: ${{ steps.decision.outputs.e2e-needed }}
     steps:
@@ -221,18 +226,13 @@ jobs:
     - name: Check for code changes and decide
       id: decision
       run: |
-        if [[ "${{ github.event_name }}" == "push" ]] || [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+        CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+        if echo "$CHANGED_FILES" | grep -E "\.(go|yaml|yml)$|Makefile|Dockerfile|charts/|test/" > /dev/null; then
           echo "e2e-needed=true" >> $GITHUB_OUTPUT
-          echo "🧪 Comprehensive E2E tests will run"
+          echo "🧪 E2E tests will run - code changes detected"
         else
-          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-          if echo "$CHANGED_FILES" | grep -E "\.(go|yaml|yml)$|Makefile|Dockerfile|charts/|test/" > /dev/null; then
-            echo "e2e-needed=true" >> $GITHUB_OUTPUT
-            echo "🧪 Comprehensive E2E tests will run - code changes detected"
-          else
-            echo "e2e-needed=false" >> $GITHUB_OUTPUT
-            echo "⏭️ Skipping comprehensive E2E tests - only documentation changes"
-          fi
+          echo "e2e-needed=false" >> $GITHUB_OUTPUT
+          echo "⏭️ Skipping E2E tests - only documentation changes"
         fi
 
   build-operator-e2e:
@@ -249,8 +249,6 @@ jobs:
         VERSION=e2e-test
         COMMIT=${{ github.sha }}
         DATE=${{ github.event.head_commit.timestamp }}
-
-
 
   helm-e2e:
     name: Helm E2E Tests
@@ -281,19 +279,19 @@ jobs:
         # Lint charts
         helm lint ./charts/parallax
         helm lint ./charts/parallax-crds
-        
+
         # Template charts with various configurations
         helm template test-release ./charts/parallax --set image.tag=test
         helm template test-release ./charts/parallax --set installCRDs=false --set replicaCount=2
         helm template test-crds ./charts/parallax-crds
-        
+
         echo "✅ All chart validation tests passed"
 
   e2e-summary:
     name: E2E Summary
     runs-on: ubuntu-latest
     needs: [detect-e2e-changes, helm-e2e, validation-e2e]
-    if: always()
+    if: always() && github.event_name == 'pull_request'
     steps:
     - name: Report E2E results
       run: |
@@ -303,7 +301,7 @@ jobs:
           echo "📊 E2E Test Results:"
           echo "Helm Tests (includes basic functionality): ${{ needs.helm-e2e.result }}"
           echo "Validation Tests: ${{ needs.validation-e2e.result }}"
-          
+
           if [[ "${{ needs.helm-e2e.result }}" == "success" && \
                 "${{ needs.validation-e2e.result }}" == "success" ]]; then
             echo "✅ All E2E tests passed!"
@@ -314,11 +312,11 @@ jobs:
           fi
         fi
 
+  # Development image build for main branch only
   build-dev:
     name: Build Development Image
     runs-on: ubuntu-latest
-    needs: [test, lint, validate-manifests, e2e-summary]
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
@@ -369,14 +367,22 @@ jobs:
           COMMIT=${{ github.sha }}
           DATE=${{ github.event.head_commit.timestamp }}
 
+    - name: Development build complete
+      run: |
+        echo "🚀 Development images built and pushed:"
+        echo "- ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main"
+        echo "- ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+        echo "- ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }}"
+        echo "✅ Ready for development and testing"
+
   notify:
     name: Notify on Failure
     runs-on: ubuntu-latest
-    needs: [test, lint, validate-manifests, build-dev]
-    if: failure() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [build-dev]
+    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
     - name: Send notification
       run: |
-        echo "CI/CD pipeline failed for ${{ github.repository }} on ${{ github.ref_name }}"
-        echo "Check the workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        echo "❌ Development build failed for ${{ github.repository }} on ${{ github.ref_name }}"
+        echo "🔗 Check the workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         # Add Slack/Discord/email notification here if needed 

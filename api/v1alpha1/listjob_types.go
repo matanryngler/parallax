@@ -22,7 +22,12 @@ type ListJobSpec struct {
 }
 
 type ListJobStatus struct {
-	JobName string `json:"jobName,omitempty"`
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	JobName    string             `json:"jobName,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -42,6 +42,11 @@ type ListCronJobSpec struct {
 
 // ListCronJobStatus defines the observed state of ListCronJob.
 type ListCronJobStatus struct {
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions       []metav1.Condition       `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 	Active           []corev1.ObjectReference `json:"active,omitempty"`
 	LastScheduleTime *metav1.Time             `json:"lastScheduleTime,omitempty"`
 }

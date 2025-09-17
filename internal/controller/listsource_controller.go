@@ -28,6 +28,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -43,6 +44,11 @@ import (
 )
 
 const listSourceFinalizer = "listsource.batchops.io/finalizer"
+
+// Condition types for ListSource
+const (
+	ConditionTypeReady = "Ready"
+)
 
 // ListSourceReconciler reconciles a ListSource object
 type ListSourceReconciler struct {
@@ -145,8 +151,15 @@ func (r *ListSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	items, err := r.getItems(ctx, &listSource)
 	if err != nil {
 		log.Error(err, "Failed to fetch items from source")
+		// Set error condition
+		meta.SetStatusCondition(&listSource.Status.Conditions, metav1.Condition{
+			Type:    ConditionTypeReady,
+			Status:  metav1.ConditionFalse,
+			Reason:  "FetchFailed",
+			Message: fmt.Sprintf("Failed to fetch items: %v", err),
+		})
 		listSource.Status.Error = err.Error()
-		listSource.Status.State = "Error"
+		listSource.Status.State = "Error" // Keep for backward compatibility
 		listSource.Status.LastUpdateTime = &metav1.Time{Time: time.Now()}
 		if err := r.Status().Update(ctx, &listSource); err != nil {
 			log.Error(err, "Unable to update ListSource status with error information")
@@ -222,12 +235,21 @@ func (r *ListSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Update status if needed
 	statusChanged := false
+	now := metav1.NewTime(time.Now())
 	newStatus := batchopsv1alpha1.ListSourceStatus{
-		LastUpdateTime: &metav1.Time{Time: time.Now()},
+		LastUpdateTime: &now,
 		ItemCount:      len(items),
 		Error:          "",
-		State:          "Ready",
+		State:          "Ready", // Keep for backward compatibility
 	}
+
+	// Set Ready condition
+	meta.SetStatusCondition(&newStatus.Conditions, metav1.Condition{
+		Type:    ConditionTypeReady,
+		Status:  metav1.ConditionTrue,
+		Reason:  "ItemsFetched",
+		Message: fmt.Sprintf("Successfully fetched %d items", len(items)),
+	})
 
 	if listSource.Status.ItemCount != newStatus.ItemCount ||
 		listSource.Status.Error != newStatus.Error ||
@@ -310,12 +332,30 @@ func (r *ListSourceReconciler) getItemsFromAPI(ctx context.Context, listSource *
 
 		switch listSource.Spec.API.Auth.Type {
 		case batchopsv1alpha1.BasicAuth:
+			if listSource.Spec.API.Auth.UsernameKey == "" || listSource.Spec.API.Auth.PasswordKey == "" {
+				log.Error(nil, "Basic auth requires both usernameKey and passwordKey")
+				return nil, fmt.Errorf("basic auth requires both usernameKey and passwordKey")
+			}
 			username := secret[listSource.Spec.API.Auth.UsernameKey]
 			password := secret[listSource.Spec.API.Auth.PasswordKey]
+			if username == "" || password == "" {
+				log.Error(nil, "Basic auth credentials not found in secret",
+					"usernameKey", listSource.Spec.API.Auth.UsernameKey,
+					"passwordKey", listSource.Spec.API.Auth.PasswordKey)
+				return nil, fmt.Errorf("basic auth credentials not found in secret")
+			}
 			req.SetBasicAuth(username, password)
 			log.V(1).Info("Configured basic auth for request", "username", username)
 		case batchopsv1alpha1.BearerAuth:
+			if listSource.Spec.API.Auth.SecretRef.Key == "" {
+				log.Error(nil, "Bearer auth requires secretRef.key to be specified")
+				return nil, fmt.Errorf("bearer auth requires secretRef.key")
+			}
 			token := secret[listSource.Spec.API.Auth.SecretRef.Key]
+			if token == "" {
+				log.Error(nil, "Bearer token not found in secret", "key", listSource.Spec.API.Auth.SecretRef.Key)
+				return nil, fmt.Errorf("bearer token not found in secret")
+			}
 			req.Header.Set("Authorization", "Bearer "+token)
 			log.V(1).Info("Configured bearer token authentication for request")
 		default:
@@ -432,7 +472,7 @@ func (r *ListSourceReconciler) getItemsFromPostgres(ctx context.Context, config 
 		// Build connection string
 		connStr := config.ConnectionString
 		if !strings.Contains(connStr, "password=") && password != "" {
-			connStr = fmt.Sprintf("%s password=REDACTED", connStr)
+			connStr = fmt.Sprintf("%s password=%s", connStr, password)
 			log.V(1).Info("Added password to connection string")
 		}
 		if !strings.Contains(connStr, "sslmode=") {

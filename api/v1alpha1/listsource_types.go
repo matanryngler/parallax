@@ -50,9 +50,9 @@ type APIAuth struct {
 	Type APIAuthType `json:"type"`
 	// +kubebuilder:validation:Required
 	SecretRef SecretRef `json:"secretRef"`
-	// +kubebuilder:validation:Required
+	// UsernameKey is required for basic auth, ignored for bearer auth
 	UsernameKey string `json:"usernameKey,omitempty"`
-	// +kubebuilder:validation:Required
+	// PasswordKey is required for basic auth, ignored for bearer auth
 	PasswordKey string `json:"passwordKey,omitempty"`
 }
 
@@ -92,10 +92,15 @@ type ListSourceSpec struct {
 }
 
 type ListSourceStatus struct {
-	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
-	ItemCount      int          `json:"itemCount,omitempty"`
-	Error          string       `json:"error,omitempty"`
-	State          string       `json:"state,omitempty"`
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions     []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	LastUpdateTime *metav1.Time       `json:"lastUpdateTime,omitempty"`
+	ItemCount      int                `json:"itemCount,omitempty"`
+	Error          string             `json:"error,omitempty"`
+	State          string             `json:"state,omitempty"`
 }
 
 // +kubebuilder:object:root=true

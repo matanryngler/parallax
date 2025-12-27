@@ -54,6 +54,9 @@ operator:
 
 # Metrics configuration
 metrics:
+  secure: false  # Use HTTP for metrics by default
+  service:
+    enabled: true  # Always create metrics Service
   serviceMonitor:
     enabled: false
     interval: 30s

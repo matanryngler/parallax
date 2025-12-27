@@ -32,6 +32,7 @@ spec:
         args:
         - --leader-elect={{ .Values.operator.leaderElection }}
         - --metrics-bind-address={{ .Values.operator.metricsAddr }}
+        - --metrics-secure={{ .Values.metrics.secure | default false }}
         - --health-probe-bind-address={{ .Values.operator.healthProbeAddr }}
         - --zap-log-level={{ .Values.operator.logLevel }}
         ports:

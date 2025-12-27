@@ -39,6 +39,7 @@ import (
 
 	batchopsv1alpha1 "github.com/matanryngler/parallax/api/v1alpha1"
 	"github.com/matanryngler/parallax/internal/controller"
+	_ "github.com/matanryngler/parallax/internal/metrics"
 	// +kubebuilder:scaffold:imports
 )
 

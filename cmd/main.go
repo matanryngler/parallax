@@ -19,8 +19,12 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"net/http"
+	"net/http/pprof"
 	"os"
 	"path/filepath"
+	"runtime"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -82,11 +86,26 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+
+	// Configure logging with production defaults (can be overridden with --zap-devel flag)
 	opts := zap.Options{
-		Development: true,
+		Development: false, // Use production mode by default for better performance
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	// Check for LOG_LEVEL environment variable for simpler configuration
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel != "" {
+		setupLog.Info("Setting log level from environment", "level", logLevel)
+		// Map common log level strings to zap levels
+		switch logLevel {
+		case "debug":
+			opts.Development = true
+		case "info", "warn", "error":
+			opts.Development = false
+		}
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -252,6 +271,50 @@ func main() {
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
+	}
+
+	// Start pprof server for memory profiling (disabled by default, enable with ENABLE_PPROF=true)
+	if os.Getenv("ENABLE_PPROF") == "true" {
+		pprofAddr := os.Getenv("PPROF_BIND_ADDRESS")
+		if pprofAddr == "" {
+			pprofAddr = ":6060"
+		}
+		setupLog.Info("Starting pprof server for memory profiling", "address", pprofAddr)
+		go func() {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/debug/pprof/", pprof.Index)
+			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+			mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
+			mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
+			mux.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
+
+			server := &http.Server{
+				Addr:    pprofAddr,
+				Handler: mux,
+			}
+			if err := server.ListenAndServe(); err != nil {
+				setupLog.Error(err, "pprof server failed")
+			}
+		}()
+
+		// Start memory stats collector
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				setupLog.Info("Memory stats",
+					"alloc_mb", m.Alloc/1024/1024,
+					"total_alloc_mb", m.TotalAlloc/1024/1024,
+					"sys_mb", m.Sys/1024/1024,
+					"num_gc", m.NumGC,
+				)
+			}
+		}()
 	}
 
 	setupLog.Info("starting manager")

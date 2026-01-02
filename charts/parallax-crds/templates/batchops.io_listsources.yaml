@@ -89,6 +89,13 @@ spec:
                     type: object
                   jsonPath:
                     type: string
+                  timeoutSeconds:
+                    description: 'TimeoutSeconds specifies the HTTP request timeout
+                      in seconds (default: 30)'
+                    format: int32
+                    maximum: 300
+                    minimum: 1
+                    type: integer
                   url:
                     type: string
                 required:
@@ -123,6 +130,28 @@ spec:
                   connectionString:
                     type: string
                   query:
+                    description: |-
+                      Query should use $1, $2, etc. for parameters to prevent SQL injection
+                      Example: "SELECT name FROM users WHERE status = $1"
+                    type: string
+                  queryParams:
+                    description: |-
+                      QueryParams are the parameters to use with parameterized queries
+                      Use this with $1, $2, etc. placeholders in the Query field
+                    items:
+                      type: string
+                    type: array
+                  sslMode:
+                    description: |-
+                      SSLMode specifies the PostgreSQL SSL mode (default: "require")
+                      Valid values: disable, allow, prefer, require, verify-ca, verify-full
+                    enum:
+                    - disable
+                    - allow
+                    - prefer
+                    - require
+                    - verify-ca
+                    - verify-full
                     type: string
                 required:
                 - connectionString

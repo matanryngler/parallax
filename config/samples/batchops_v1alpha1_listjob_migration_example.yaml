@@ -1,0 +1,241 @@
+# MIGRATION EXAMPLE: From Old API to New Enhanced API
+#
+# This file demonstrates how to migrate from the old JobTemplateSpec format
+# to the new PodTemplateSpec format, showcasing the enhanced capabilities.
+
+---
+# OLD FORMAT (no longer supported)
+# apiVersion: batchops.io/v1alpha1
+# kind: ListJob
+# metadata:
+#   name: simple-processor-old
+# spec:
+#   staticList: ["item1", "item2", "item3"]
+#   parallelism: 2
+#   template:
+#     image: "busybox"
+#     command: ["echo", "Processing: $ITEM"]
+#     envName: "ITEM"
+#     resources:
+#       requests:
+#         cpu: "100m"
+#         memory: "128Mi"
+
+---
+# NEW FORMAT (enhanced with full PodTemplateSpec)
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: simple-processor-new
+  labels:
+    migration-example: "true"
+spec:
+  # Same basic configuration
+  staticList: ["item1", "item2", "item3"]
+  parallelism: 2
+  envName: "ITEM"  # Now at spec level instead of template level
+
+  # NEW: Additional Job configuration options
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+
+  # NEW: Full Kubernetes PodTemplateSpec instead of simple JobTemplateSpec
+  template:
+    metadata:
+      labels:
+        app: simple-processor
+        version: new-api
+    spec:
+      # NEW: Can specify service account
+      serviceAccountName: default
+
+      # NEW: Pod-level security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+
+      containers:
+        - name: processor  # NEW: Must specify container name
+          image: "busybox"
+          command: ["echo", "Processing: $ITEM"]  # Same as before
+
+          # NEW: Container-level security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          # Resources moved inside container spec
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+
+          # NEW: Can add environment variables
+          env:
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+          # NEW: Can add volume mounts
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      # NEW: Can add volumes
+      volumes:
+        - name: tmp
+          emptyDir: {}
+
+      # NEW: Node selection capabilities
+      nodeSelector:
+        kubernetes.io/os: linux
+
+      restartPolicy: Never
+
+---
+# ADVANCED EXAMPLE: Showing what's now possible
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: advanced-processor
+spec:
+  staticList: ["dataset-A", "dataset-B", "dataset-C"]
+  parallelism: 2
+  envName: "DATASET"
+
+  # Advanced Job configuration
+  backoffLimit: 5
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 86400
+
+  template:
+    metadata:
+      labels:
+        app: advanced-processor
+        tier: compute
+      annotations:
+        prometheus.io/scrape: "true"
+    spec:
+      # Custom service account with specific RBAC permissions
+      serviceAccountName: data-processor-sa
+
+      # Pod security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 2000
+        fsGroup: 2000
+
+      # Multiple volumes for different purposes
+      volumes:
+        - name: data-cache
+          emptyDir:
+            sizeLimit: "10Gi"
+        - name: config
+          configMap:
+            name: processor-config
+        - name: secrets
+          secret:
+            secretName: processor-secrets
+
+      # Init container for data preparation
+      initContainers:
+        - name: data-fetcher
+          image: "alpine/curl:latest"
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Fetching data for: $DATASET"
+              curl -o /cache/data.json "https://api.example.com/datasets/$DATASET"
+          volumeMounts:
+            - name: data-cache
+              mountPath: /cache
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+
+      containers:
+        # Main processing container
+        - name: processor
+          image: "my-registry/advanced-processor:v2.0"
+          command: ["python", "/app/process.py"]
+          args: ["--dataset", "$(DATASET)", "--input", "/cache/data.json"]
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          env:
+            - name: PROCESSING_MODE
+              value: "parallel"
+            - name: OUTPUT_FORMAT
+              value: "json"
+
+          envFrom:
+            - configMapRef:
+                name: processor-config
+            - secretRef:
+                name: processor-secrets
+
+          volumeMounts:
+            - name: data-cache
+              mountPath: /cache
+            - name: config
+              mountPath: /etc/config
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "4"
+              memory: "8Gi"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+
+        # Sidecar for metrics collection
+        - name: metrics
+          image: "prom/node-exporter:latest"
+          ports:
+            - containerPort: 9100
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+
+      # Advanced scheduling
+      nodeSelector:
+        node-type: "compute-optimized"
+
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "compute"
+          effect: "NoSchedule"
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: advanced-processor
+                topologyKey: "kubernetes.io/hostname"
+
+      priorityClassName: "high-priority"
+      restartPolicy: Never

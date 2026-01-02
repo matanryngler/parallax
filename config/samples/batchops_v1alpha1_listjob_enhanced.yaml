@@ -1,0 +1,252 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: data-processor-enhanced
+  labels:
+    app: data-processor
+    version: enhanced
+spec:
+  # Static list for this example (could also use listSourceRef)
+  staticList:
+    - "dataset-001"
+    - "dataset-002"
+    - "dataset-003"
+    - "dataset-004"
+    - "dataset-005"
+
+  # Process 3 items at a time
+  parallelism: 3
+
+  # Environment variable name for list items
+  envName: "DATASET_ID"
+
+  # Job configuration with new capabilities
+  backoffLimit: 2
+  activeDeadlineSeconds: 1800  # 30 minutes timeout
+  ttlSecondsAfterFinished: 3600  # Keep for 1 hour after completion
+
+  # Custom init container image
+  initImage: "alpine:3.18"
+
+  # Cleanup after 2 hours
+  deleteAfter: "2h"
+
+  # Full Kubernetes PodTemplateSpec
+  template:
+    metadata:
+      labels:
+        app: data-processor
+        component: batch-worker
+        batch-type: "dataset-processing"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      # Use custom service account with RBAC permissions
+      serviceAccountName: data-processor-sa
+
+      # Pod security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 2000
+        runAsGroup: 2000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Custom volumes for data processing
+      volumes:
+        - name: data-cache
+          emptyDir:
+            sizeLimit: "5Gi"
+        - name: processing-config
+          configMap:
+            name: data-processor-config
+            defaultMode: 0644
+        - name: output-storage
+          persistentVolumeClaim:
+            claimName: data-output-pvc
+        - name: ssl-certs
+          secret:
+            secretName: ssl-certificates
+            defaultMode: 0400
+
+      # Init containers for setup
+      initContainers:
+        - name: data-downloader
+          image: "curlimages/curl:8.4.0"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Downloading dataset: $DATASET_ID"
+              curl -o /data-cache/dataset.tar.gz "https://data-repo.example.com/datasets/${DATASET_ID}.tar.gz"
+              cd /data-cache && tar -xzf dataset.tar.gz
+          env:
+            - name: DATASET_ID
+              value: "placeholder"  # Will be overridden by operator
+          volumeMounts:
+            - name: data-cache
+              mountPath: /data-cache
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+      containers:
+        - name: processor
+          image: "my-registry/data-processor:v3.2.1"
+          command: ["python", "/app/process.py"]
+          args: ["--dataset-id", "$(DATASET_ID)", "--output-dir", "/output"]
+
+          # Container security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          # Comprehensive environment configuration
+          env:
+            - name: PROCESSING_MODE
+              value: "batch"
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: METRICS_PORT
+              value: "8080"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          # Environment from external sources
+          envFrom:
+            - configMapRef:
+                name: data-processor-config
+            - secretRef:
+                name: data-processor-secrets
+                optional: false
+
+          # Volume mounts
+          volumeMounts:
+            - name: data-cache
+              mountPath: /data
+              readOnly: true
+            - name: processing-config
+              mountPath: /etc/config
+              readOnly: true
+            - name: output-storage
+              mountPath: /output
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs
+              readOnly: true
+
+          # Resource requirements
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+              ephemeral-storage: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+              ephemeral-storage: "10Gi"
+
+          # Health checks
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+
+        # Sidecar container for monitoring
+        - name: metrics-exporter
+          image: "prom/node-exporter:v1.6.1"
+          args:
+            - "--path.procfs=/host/proc"
+            - "--path.sysfs=/host/sys"
+            - "--collector.filesystem.ignored-mount-points"
+            - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+          ports:
+            - containerPort: 9100
+              name: metrics
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+      # Node selection and scheduling
+      nodeSelector:
+        node-pool: "compute-optimized"
+        disk-type: "ssd"
+
+      # Affinity rules
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: "zone"
+                    operator: In
+                    values: ["us-west-1a", "us-west-1b"]
+
+      # Tolerations for dedicated nodes
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "data-processing"
+          effect: "NoSchedule"
+        - key: "high-memory"
+          operator: "Exists"
+          effect: "NoSchedule"
+
+      # DNS configuration
+      dnsPolicy: ClusterFirstWithHostNet
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "2"
+
+      # Priority and preemption
+      priorityClassName: "high-priority"
+
+      # Restart policy
+      restartPolicy: Never
+
+      # Termination grace period
+      terminationGracePeriodSeconds: 60

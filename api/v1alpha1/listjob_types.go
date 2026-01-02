@@ -22,6 +22,12 @@ type JobTemplateSpec struct {
 	VolumeMounts       []corev1.VolumeMount          `json:"volumeMounts,omitempty"`
 	Ports              []corev1.ContainerPort        `json:"ports,omitempty"`
 	InitContainers     []corev1.Container            `json:"initContainers,omitempty"`
+	// InitImage is the container image to use for the internal parallax-init container (default: busybox:1.36)
+	// +optional
+	InitImage string `json:"initImage,omitempty"`
+	// InitResources are the resource requirements for the internal parallax-init container
+	// +optional
+	InitResources corev1.ResourceRequirements `json:"initResources,omitempty"`
 }
 
 type ListJobSpec struct {

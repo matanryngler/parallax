@@ -177,9 +177,16 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Prepare init containers - start with user-specified ones, then add the required internal init container last
 	initContainers := make([]corev1.Container, len(listJob.Spec.Template.InitContainers))
 	copy(initContainers, listJob.Spec.Template.InitContainers)
+
+	// Determine init image (default to busybox:1.36 if not specified)
+	initImage := listJob.Spec.Template.InitImage
+	if initImage == "" {
+		initImage = "busybox:1.36"
+	}
+
 	initContainers = append(initContainers, corev1.Container{
 		Name:  "parallax-init",
-		Image: "busybox",
+		Image: initImage,
 		Command: []string{"sh", "-c", fmt.Sprintf(`
 			# Read the items file
 			ITEMS=$(cat /list/items)
@@ -202,6 +209,7 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			{Name: "list", MountPath: "/list"},
 			{Name: "shared", MountPath: "/shared"},
 		},
+		Resources: listJob.Spec.Template.InitResources,
 	})
 
 	podSpec := corev1.PodSpec{

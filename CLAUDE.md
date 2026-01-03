@@ -28,6 +28,12 @@ make test                       # Run unit tests with coverage
 make ci-quick                   # Fast: unit tests + linting
 make ci-all                     # Complete: all CI checks
 
+# Run specific test
+go test -v ./internal/controller/ -run TestListSourceController
+
+# Run specific package tests
+go test -v ./api/v1alpha1/
+
 # E2E tests
 make test-e2e                   # Full E2E: setup cluster + test + cleanup
 make test-e2e-quick            # Quick E2E: test against existing cluster
@@ -127,6 +133,8 @@ make docker-push IMG=my-registry/parallax:tag
 5. **Test**: `make ci-quick` for fast feedback or `make ci-all` for complete validation
 6. **E2E testing**: `make test-e2e` (creates isolated Kind cluster)
 
+**CRITICAL**: After modifying CRD types, you MUST run `make generate && make manifests && make sync-all` or your build will fail. The `generate` target automatically runs `sync-all`, so `make generate` is usually sufficient.
+
 ## Testing Philosophy
 
 - **Isolated E2E Testing**: Creates dedicated Kind clusters (`parallax-e2e-test`) that are automatically cleaned up
@@ -160,6 +168,37 @@ Charts are automatically synchronized from `config/` using `make sync-all`. Neve
 - Regular security scanning with gosec
 - Container images are signed with cosign
 - Secrets handled securely for API and database authentication
+
+## Debugging
+
+### Local Development
+```bash
+# Run operator locally with verbose logging
+LOG_LEVEL=debug make run
+
+# Connect to E2E test cluster for debugging
+make test-e2e-setup
+export KUBECONFIG=/tmp/parallax-e2e-test-kubeconfig
+kubectl get all -A
+
+# Clean up when done
+make test-e2e-cleanup
+```
+
+### Controller Logs
+```bash
+# View operator logs in cluster
+kubectl logs -n parallax-system deployment/parallax -f
+
+# Check controller manager events
+kubectl get events -n parallax-system --sort-by='.lastTimestamp'
+```
+
+### Common Issues
+- **Build fails after CRD changes**: Run `make generate && make manifests && make sync-all`
+- **Tests fail with "cannot find module"**: Run `go mod tidy`
+- **E2E tests hang**: Clean up stale Kind cluster with `make test-e2e-cleanup`
+- **Helm validation fails**: Ensure you ran `make sync-all` after manifest changes
 
 ## Important Notes
 

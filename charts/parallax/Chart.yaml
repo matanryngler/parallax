@@ -6,7 +6,7 @@ version: 0.1.6
 appVersion: 0.1.6
 maintainers:
   - name: Matan Ryngler
-    email: matan@example.com
+    email: matanryngler@gmail.com
 keywords:
   - operator
   - kubernetes

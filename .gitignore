@@ -58,3 +58,8 @@ config/manager/manager.yaml
 # Build artifacts
 dist/
 build/
+
+# Claude Flow and local development
+.claude-flow/
+.swarm/
+local-testing/

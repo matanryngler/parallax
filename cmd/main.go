@@ -23,7 +23,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"path/filepath"
-	"runtime"
+	goruntime "runtime"
 	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -305,8 +305,8 @@ func main() {
 			ticker := time.NewTicker(30 * time.Second)
 			defer ticker.Stop()
 			for range ticker.C {
-				var m runtime.MemStats
-				runtime.ReadMemStats(&m)
+				var m goruntime.MemStats
+				goruntime.ReadMemStats(&m)
 				setupLog.Info("Memory stats",
 					"alloc_mb", m.Alloc/1024/1024,
 					"total_alloc_mb", m.TotalAlloc/1024/1024,

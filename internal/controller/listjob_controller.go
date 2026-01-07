@@ -178,10 +178,10 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	initContainers := make([]corev1.Container, len(listJob.Spec.Template.InitContainers))
 	copy(initContainers, listJob.Spec.Template.InitContainers)
 
-	// Determine init image (default to busybox:1.36 if not specified)
+	// Determine init image (use default if not specified)
 	initImage := listJob.Spec.Template.InitImage
 	if initImage == "" {
-		initImage = "busybox:1.36"
+		initImage = defaultInitImage
 	}
 
 	initContainers = append(initContainers, corev1.Container{

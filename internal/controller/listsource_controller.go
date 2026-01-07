@@ -45,7 +45,13 @@ import (
 	batchopsv1alpha1 "github.com/matanryngler/parallax/api/v1alpha1"
 )
 
-const listSourceFinalizer = "listsource.batchops.io/finalizer"
+const (
+	listSourceFinalizer = "listsource.batchops.io/finalizer"
+
+	// API response size limits
+	maxResponseSizeMB = 10                              // Maximum API response size in megabytes
+	maxResponseSize   = maxResponseSizeMB * 1024 * 1024 // Maximum API response size in bytes
+)
 
 // Condition types for ListSource
 const (
@@ -403,8 +409,7 @@ func (r *ListSourceReconciler) getItemsFromAPI(ctx context.Context, listSource *
 		return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
 	}
 
-	// Limit response size to 10MB to prevent memory exhaustion
-	const maxResponseSize = 10 * 1024 * 1024
+	// Limit response size to prevent memory exhaustion
 	limitedReader := io.LimitReader(resp.Body, maxResponseSize)
 	body, err := io.ReadAll(limitedReader)
 	if err != nil {
@@ -415,8 +420,8 @@ func (r *ListSourceReconciler) getItemsFromAPI(ctx context.Context, listSource *
 	// Check if response was truncated
 	if int64(len(body)) == maxResponseSize {
 		log.Error(nil, "API response exceeded maximum size limit",
-			"max_size_mb", maxResponseSize/(1024*1024))
-		return nil, fmt.Errorf("response size exceeded %d MB limit", maxResponseSize/(1024*1024))
+			"max_size_mb", maxResponseSizeMB)
+		return nil, fmt.Errorf("response size exceeded %d MB limit", maxResponseSizeMB)
 	}
 
 	// Log the response body for debugging

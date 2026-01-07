@@ -46,7 +46,13 @@ type ListCronJobReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-const listCronJobFinalizer = "listcronjob.batchops.io/finalizer"
+const (
+	listCronJobFinalizer = "listcronjob.batchops.io/finalizer"
+	// defaultInitImage is the default busybox image used for the init container.
+	// Uses busybox:1 to get latest 1.x patch versions while maintaining compatibility.
+	// Users can override via spec.template.initImage in the CRD.
+	defaultInitImage = "busybox:1"
+)
 
 // +kubebuilder:rbac:groups=batchops.io,resources=listcronjobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batchops.io,resources=listcronjobs/status,verbs=get;update;patch
@@ -218,10 +224,10 @@ func (r *ListCronJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	initContainers := make([]corev1.Container, len(listCronJob.Spec.Template.InitContainers))
 	copy(initContainers, listCronJob.Spec.Template.InitContainers)
 
-	// Determine init image (default to busybox:1.36 if not specified)
+	// Determine init image (use default if not specified)
 	initImage := listCronJob.Spec.Template.InitImage
 	if initImage == "" {
-		initImage = "busybox:1.36"
+		initImage = defaultInitImage
 	}
 
 	initContainers = append(initContainers, corev1.Container{

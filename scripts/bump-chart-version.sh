@@ -56,14 +56,19 @@ function update_chart() {
     
     current_version=$(grep '^version:' "$chart_path/Chart.yaml" | cut -d' ' -f2)
     new_version=$(bump_version "$current_version" "$BUMP_TYPE")
-    
+
     echo "📦 Updating $chart_name chart: $current_version → $new_version"
-    
+
     # Update version in Chart.yaml
     sed -i.bak "s/^version: .*/version: $new_version/" "$chart_path/Chart.yaml"
     rm "$chart_path/Chart.yaml.bak"
-    
-    echo "✅ Updated $chart_path/Chart.yaml"
+
+    # Update appVersion in Chart.yaml (remove 'v' prefix and quotes if present)
+    # This handles both quoted and unquoted appVersion formats
+    sed -i.bak "s/^appVersion: .*/appVersion: \"$new_version\"/" "$chart_path/Chart.yaml"
+    rm "$chart_path/Chart.yaml.bak"
+
+    echo "✅ Updated $chart_path/Chart.yaml (version and appVersion)"
 }
 
 echo "🚀 Bumping chart version(s) - type: $BUMP_TYPE"

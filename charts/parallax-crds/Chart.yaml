@@ -3,7 +3,7 @@ name: parallax-crds
 description: Parallax Custom Resource Definitions (CRDs)
 type: application
 version: 0.1.7
-appVersion: "0.1.6"
+appVersion: "0.1.7"
 home: https://github.com/matanryngler/parallax
 sources:
   - https://github.com/matanryngler/parallax

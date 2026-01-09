@@ -3,7 +3,7 @@ name: parallax
 description: A Helm chart for deploying the Parallax Operator
 type: application
 version: 0.1.7
-appVersion: 0.1.6
+appVersion: 0.1.7
 maintainers:
   - name: Matan Ryngler
     email: matanryngler@gmail.com

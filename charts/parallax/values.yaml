@@ -34,10 +34,10 @@ securityContext:
 resources:
   limits:
     cpu: 500m
-    memory: 128Mi
+    memory: 256Mi  # Increased for metrics and logging
   requests:
     cpu: 100m
-    memory: 64Mi
+    memory: 128Mi  # Increased baseline for production workloads
 
 nodeSelector: {}
 
@@ -47,13 +47,33 @@ affinity: {}
 
 # Operator-specific configuration
 operator:
-  logLevel: info
+  logLevel: info  # Options: debug, info, warn, error
+  logFormat: production  # Options: production, development (production is more efficient)
   leaderElection: true
   metricsAddr: ":8080"
   healthProbeAddr: ":8081"
 
+  # Memory profiling and optimization
+  profiling:
+    enabled: false  # Enable pprof endpoint for memory profiling
+    bindAddress: ":6060"  # Address for pprof server
+
+  # Memory optimization hints (for documentation/monitoring)
+  memory:
+    # Estimated memory usage based on workload:
+    # - Base (no resources): ~50Mi
+    # - + 1Mi per active ListSource
+    # - + 2Mi per active ListCronJob
+    # - + Metrics: ~20Mi overhead
+    # - + Debug logging: ~10-20Mi additional
+    # For 10 ListSources + 5 ListCronJobs + metrics: ~90Mi baseline
+    # Recommend 256Mi limit with 128Mi request for production
+
 # Metrics configuration
 metrics:
+  secure: false  # Use HTTP for metrics by default
+  service:
+    enabled: true  # Always create metrics Service
   serviceMonitor:
     enabled: false
     interval: 30s

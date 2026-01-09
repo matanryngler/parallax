@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -44,7 +45,13 @@ import (
 	batchopsv1alpha1 "github.com/matanryngler/parallax/api/v1alpha1"
 )
 
-const listSourceFinalizer = "listsource.batchops.io/finalizer"
+const (
+	listSourceFinalizer = "listsource.batchops.io/finalizer"
+
+	// API response size limits
+	maxResponseSizeMB = 10                              // Maximum API response size in megabytes
+	maxResponseSize   = maxResponseSizeMB * 1024 * 1024 // Maximum API response size in bytes
+)
 
 // Condition types for ListSource
 const (
@@ -323,7 +330,15 @@ func (r *ListSourceReconciler) getItemsFromAPI(ctx context.Context, listSource *
 	)
 	log.Info("Starting API request to fetch items")
 
-	client := &http.Client{}
+	// Set timeout with default of 30 seconds
+	timeout := 30 * time.Second
+	if listSource.Spec.API.TimeoutSeconds != nil {
+		timeout = time.Duration(*listSource.Spec.API.TimeoutSeconds) * time.Second
+	}
+
+	client := &http.Client{
+		Timeout: timeout,
+	}
 	req, err := http.NewRequestWithContext(ctx, "GET", listSource.Spec.API.URL, nil)
 	if err != nil {
 		log.Error(err, "Failed to create HTTP request")
@@ -394,10 +409,19 @@ func (r *ListSourceReconciler) getItemsFromAPI(ctx context.Context, listSource *
 		return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	// Limit response size to prevent memory exhaustion
+	limitedReader := io.LimitReader(resp.Body, maxResponseSize)
+	body, err := io.ReadAll(limitedReader)
 	if err != nil {
 		log.Error(err, "Failed to read API response body")
 		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Check if response was truncated
+	if int64(len(body)) == maxResponseSize {
+		log.Error(nil, "API response exceeded maximum size limit",
+			"max_size_mb", maxResponseSizeMB)
+		return nil, fmt.Errorf("response size exceeded %d MB limit", maxResponseSizeMB)
 	}
 
 	// Log the response body for debugging
@@ -464,6 +488,33 @@ func (r *ListSourceReconciler) getItemsFromPostgres(ctx context.Context, config 
 	}
 	log.Info("Starting PostgreSQL query to fetch items")
 
+	// Security: Validate query is read-only by blocking dangerous SQL keywords
+	// This MUST happen before database connection to prevent attacks
+	dangerousKeywords := []string{
+		"DELETE", "DROP", "INSERT", "UPDATE", "ALTER", "CREATE",
+		"TRUNCATE", "GRANT", "REVOKE", "EXEC", "EXECUTE",
+		"MERGE", "REPLACE", "RENAME", "CALL", "PREPARE",
+		"DEALLOCATE", "LOCK", "UNLOCK", "SET", "RESET",
+	}
+
+	upperQuery := strings.ToUpper(config.Query)
+	for _, keyword := range dangerousKeywords {
+		// Use word boundary check to avoid false positives (e.g., "DELETED_AT" column name)
+		// Check for keyword followed by space, newline, tab, or end of string
+		pattern := keyword + "(?:\\s|$)"
+		matched, _ := regexp.MatchString(pattern, upperQuery)
+		if matched {
+			log.Error(nil, "Query contains forbidden SQL keyword", "keyword", keyword, "query", config.Query)
+			return nil, fmt.Errorf("security: query contains forbidden keyword '%s' - only SELECT queries are allowed", keyword)
+		}
+	}
+
+	// Additional defense: block query chaining with semicolons
+	if strings.Contains(config.Query, ";") {
+		log.Error(nil, "Query contains semicolon (query chaining not allowed)", "query", config.Query)
+		return nil, fmt.Errorf("security: query must not contain semicolons (prevents query chaining)")
+	}
+
 	// Get secret if specified
 	var password string
 	if config.Auth != nil {
@@ -486,16 +537,28 @@ func (r *ListSourceReconciler) getItemsFromPostgres(ctx context.Context, config 
 	} else {
 		// Build connection string
 		connStr := config.ConnectionString
+		// Helper function to append query parameters correctly
+		appendParam := func(connStr, param string) string {
+			if strings.Contains(connStr, "?") {
+				return fmt.Sprintf("%s&%s", connStr, param)
+			}
+			return fmt.Sprintf("%s?%s", connStr, param)
+		}
+
 		if !strings.Contains(connStr, "password=") && password != "" {
-			connStr = fmt.Sprintf("%s password=%s", connStr, password)
+			connStr = appendParam(connStr, fmt.Sprintf("password=%s", password))
 			log.V(1).Info("Added password to connection string")
 		}
 		if !strings.Contains(connStr, "sslmode=") {
-			connStr = fmt.Sprintf("%s sslmode=disable", connStr)
-			log.V(1).Info("Set SSL mode to disabled")
+			sslMode := "require" // Secure by default
+			if config.SSLMode != "" {
+				sslMode = config.SSLMode
+			}
+			connStr = appendParam(connStr, fmt.Sprintf("sslmode=%s", sslMode))
+			log.V(1).Info("Set SSL mode", "sslMode", sslMode)
 		}
 		if !strings.Contains(connStr, "connect_timeout=") {
-			connStr = fmt.Sprintf("%s connect_timeout=10", connStr)
+			connStr = appendParam(connStr, "connect_timeout=10")
 			log.V(1).Info("Set connection timeout to 10 seconds")
 		}
 
@@ -517,9 +580,16 @@ func (r *ListSourceReconciler) getItemsFromPostgres(ctx context.Context, config 
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Execute query
-	log.V(1).Info("Executing database query", "query", config.Query)
-	rows, err := db.QueryContext(ctx, config.Query)
+	// Execute query with parameterization to prevent SQL injection
+	log.V(1).Info("Executing database query", "query", config.Query, "paramCount", len(config.QueryParams))
+
+	// Convert string params to interface{} for QueryContext
+	params := make([]interface{}, len(config.QueryParams))
+	for i, p := range config.QueryParams {
+		params[i] = p
+	}
+
+	rows, err := db.QueryContext(ctx, config.Query, params...)
 	if err != nil {
 		log.Error(err, "Database query failed")
 		return nil, fmt.Errorf("failed to execute query: %w", err)
@@ -547,6 +617,8 @@ func (r *ListSourceReconciler) getItemsFromPostgres(ctx context.Context, config 
 }
 
 func (r *ListSourceReconciler) getSecret(ctx context.Context, namespace string, ref batchopsv1alpha1.SecretRef) (map[string]string, error) {
+	// Use the explicitly specified namespace if provided, otherwise use ListSource's namespace
+	// Cross-namespace access is controlled by RBAC (ClusterRole vs Role)
 	secretNamespace := namespace
 	if ref.Namespace != "" {
 		secretNamespace = ref.Namespace

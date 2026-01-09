@@ -1,4 +1,4 @@
-{{- if .Values.metrics.serviceMonitor.enabled }}
+{{- if .Values.metrics.service.enabled | default true }}
 apiVersion: v1
 kind: Service
 metadata:

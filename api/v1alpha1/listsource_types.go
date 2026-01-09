@@ -43,6 +43,11 @@ type APIConfig struct {
 	Auth    *APIAuth          `json:"auth,omitempty"`
 	// +kubebuilder:validation:Required
 	JSONPath string `json:"jsonPath,omitempty"`
+	// TimeoutSeconds specifies the HTTP request timeout in seconds (default: 30)
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=300
+	// +optional
+	TimeoutSeconds *int32 `json:"timeoutSeconds,omitempty"`
 }
 
 type APIAuth struct {
@@ -60,8 +65,19 @@ type PostgresConfig struct {
 	// +kubebuilder:validation:Required
 	ConnectionString string `json:"connectionString"`
 	// +kubebuilder:validation:Required
-	Query string        `json:"query"`
-	Auth  *PostgresAuth `json:"auth,omitempty"`
+	// Query should use $1, $2, etc. for parameters to prevent SQL injection
+	// Example: "SELECT name FROM users WHERE status = $1"
+	Query string `json:"query"`
+	// QueryParams are the parameters to use with parameterized queries
+	// Use this with $1, $2, etc. placeholders in the Query field
+	// +optional
+	QueryParams []string      `json:"queryParams,omitempty"`
+	Auth        *PostgresAuth `json:"auth,omitempty"`
+	// SSLMode specifies the PostgreSQL SSL mode (default: "require")
+	// Valid values: disable, allow, prefer, require, verify-ca, verify-full
+	// +kubebuilder:validation:Enum=disable;allow;prefer;require;verify-ca;verify-full
+	// +optional
+	SSLMode string `json:"sslMode,omitempty"`
 }
 
 type PostgresAuth struct {

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 
 # Dependencies stage - downloads and pre-compiles dependencies for maximum caching
-FROM --platform=$BUILDPLATFORM golang:1.23 AS deps
+FROM --platform=$BUILDPLATFORM golang:1.25 AS deps
 WORKDIR /workspace
 COPY go.mod go.sum ./
 

@@ -1,0 +1,278 @@
+# SECURITY-FOCUSED EXAMPLE
+#
+# This example demonstrates security best practices using the enhanced
+# PodTemplateSpec capabilities for production workloads.
+
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: secure-data-processor
+  labels:
+    app: secure-processor
+    security-level: "high"
+    compliance: "pci-dss"
+  annotations:
+    security.example.com/scan-policy: "strict"
+    security.example.com/approved-by: "security-team"
+spec:
+  # Process sensitive data items
+  staticList:
+    - "payment-data-2024-01"
+    - "payment-data-2024-02"
+    - "payment-data-2024-03"
+
+  # Conservative parallelism for security
+  parallelism: 1
+
+  # Custom environment variable name
+  envName: "SECURE_DATASET"
+
+  # Strict job configuration
+  backoffLimit: 1  # No retries for security
+  activeDeadlineSeconds: 1800  # 30 minute timeout
+  ttlSecondsAfterFinished: 300  # Quick cleanup (5 minutes)
+
+  # Use custom init container with security scanning
+  initImage: "my-registry/security-scanner:v1.2.3"
+
+  template:
+    metadata:
+      labels:
+        app: secure-processor
+        security-level: "high"
+        data-classification: "confidential"
+      annotations:
+        # Security annotations
+        container.apparmor.security.beta.kubernetes.io/processor: "runtime/default"
+        seccomp.security.alpha.kubernetes.io/pod: "runtime/default"
+    spec:
+      # Use dedicated service account with minimal RBAC
+      serviceAccountName: secure-processor-sa
+
+      # Strict pod security context
+      securityContext:
+        # Run as non-root user
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+
+        # Prevent privilege escalation
+        allowPrivilegeEscalation: false
+
+        # Use seccomp profile
+        seccompProfile:
+          type: RuntimeDefault
+
+        # Set supplemental groups
+        supplementalGroups: [10001]
+
+        # SELinux options (if applicable)
+        seLinuxOptions:
+          level: "s0:c123,c456"
+
+      # Secure volumes with proper permissions
+      volumes:
+        # Encrypted temporary storage
+        - name: secure-temp
+          emptyDir:
+            sizeLimit: "1Gi"
+
+        # Configuration from secured ConfigMap
+        - name: secure-config
+          configMap:
+            name: secure-processor-config
+            defaultMode: 0400  # Read-only for owner only
+
+        # Secrets with restricted permissions
+        - name: encryption-keys
+          secret:
+            secretName: processor-encryption-keys
+            defaultMode: 0400
+
+        # TLS certificates
+        - name: tls-certs
+          secret:
+            secretName: processor-tls-certs
+            defaultMode: 0400
+
+      containers:
+        - name: processor
+          # Use signed and scanned image
+          image: "my-secure-registry/secure-processor:v2.1.0-sha256@sha256:abcd1234..."
+
+          # Minimal command and args
+          command: ["/app/secure-process"]
+          args: ["--dataset", "$(SECURE_DATASET)", "--secure-mode"]
+
+          # Strict container security context
+          securityContext:
+            # Prevent all privilege escalation
+            allowPrivilegeEscalation: false
+
+            # Read-only root filesystem
+            readOnlyRootFilesystem: true
+
+            # Drop all capabilities
+            capabilities:
+              drop: ["ALL"]
+
+            # Run as specific non-root user
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+
+            # Seccomp profile
+            seccompProfile:
+              type: RuntimeDefault
+
+          # Minimal environment variables
+          env:
+            # Only essential configuration
+            - name: LOG_LEVEL
+              value: "WARN"  # Minimal logging for security
+            - name: SECURE_MODE
+              value: "true"
+            - name: ENCRYPTION_ENABLED
+              value: "true"
+            - name: TLS_VERIFY
+              value: "true"
+
+            # Pod information (safe to expose)
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+
+          # Environment from secured sources only
+          envFrom:
+            - secretRef:
+                name: secure-processor-env
+                optional: false
+
+          # Secure volume mounts
+          volumeMounts:
+            # Writable temp space (encrypted)
+            - name: secure-temp
+              mountPath: /tmp
+
+            # Read-only configuration
+            - name: secure-config
+              mountPath: /etc/config
+              readOnly: true
+
+            # Encryption keys (read-only)
+            - name: encryption-keys
+              mountPath: /etc/keys
+              readOnly: true
+
+            # TLS certificates (read-only)
+            - name: tls-certs
+              mountPath: /etc/tls
+              readOnly: true
+
+          # Conservative resource limits
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+              ephemeral-storage: "2Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+              ephemeral-storage: "4Gi"
+
+          # Health checks with security considerations
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8443  # HTTPS only
+              scheme: HTTPS
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 2  # Fail fast
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8443  # HTTPS only
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+          # Startup probe for security initialization
+          startupProbe:
+            httpGet:
+              path: /startup
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 12  # Allow 60 seconds for secure startup
+
+      # Secure scheduling constraints
+      nodeSelector:
+        # Only run on secured nodes
+        security-level: "high"
+        node-type: "secure-compute"
+        compliance: "pci-dss"
+
+      # Strict affinity rules
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  # Must run on dedicated secure nodes
+                  - key: "dedicated"
+                    operator: In
+                    values: ["secure-processing"]
+                  # Must have hardware security module
+                  - key: "hardware-security"
+                    operator: In
+                    values: ["hsm-enabled"]
+
+        # Anti-affinity to spread across secure nodes
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: secure-processor
+                topologyKey: "kubernetes.io/hostname"
+
+      # Tolerations for dedicated secure nodes
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "secure-processing"
+          effect: "NoSchedule"
+        - key: "security-level"
+          operator: "Equal"
+          value: "high"
+          effect: "NoSchedule"
+
+      # Network security
+      dnsPolicy: ClusterFirst
+      hostNetwork: false
+      hostPID: false
+      hostIPC: false
+
+      # High priority for security workloads
+      priorityClassName: "security-critical"
+
+      # Quick termination
+      terminationGracePeriodSeconds: 30
+
+      # Restart policy
+      restartPolicy: Never
+
+      # Image pull policy
+      imagePullSecrets:
+        - name: secure-registry-secret

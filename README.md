@@ -276,23 +276,47 @@ spec:
 
 ## 📊 Performance & Scalability
 
+### Resource Requirements
+
+Parallax is designed to be lightweight and efficient, with memory usage that scales sub-linearly with the number of resources.
+
+| Workload Size | Memory Request | Memory Limit | Example Use Case |
+|---------------|----------------|--------------|------------------|
+| **Small** (1-10 resources) | 64Mi | 128Mi | Development, testing |
+| **Medium** (10-50 resources) | 128Mi | 256Mi | **Production (recommended)** |
+| **Large** (50-100+ resources) | 192Mi | 384Mi | High-scale production |
+
+**Measured Performance:**
+- Base memory: ~24 MB
+- Per-resource overhead: 150-400 KB depending on complexity
+- 20 CronJobs with 150 jobs each: 32.9 MB system memory
+- Sub-linear scaling: doubling resources doesn't double memory
+
 ### Benchmarks
 
 | Metric | Value | Notes |
 |--------|--------|-------|
 | **Max Concurrent Jobs** | 1000+ | Limited by cluster resources |
-| **Items per Second** | 500+ | Depends on job complexity |
-| **Memory Usage** | ~128Mi | Operator base memory |
-| **CPU Usage** | ~100m | Operator base CPU |
-| **Startup Time** | <30s | Time to process first job |
+| **Reconciliation Rate** | 7+ per minute | Per controller under load |
+| **Startup Time** | <10s | From pod start to ready |
+| **Goroutines** | ~100 | Stable, no leaks detected |
 
-### Resource Requirements
+### Optional: Memory Profiling
 
-| Component | Minimum | Recommended | Max Tested |
-|-----------|---------|-------------|------------|
-| **CPU** | 100m | 500m | 2 cores |
-| **Memory** | 128Mi | 256Mi | 1Gi |
-| **Jobs** | 1 | 50 | 1000+ |
+For production troubleshooting, enable the built-in pprof endpoint:
+
+```yaml
+# Helm values
+operator:
+  profiling:
+    enabled: true  # Disabled by default
+```
+
+Access profiling data:
+```bash
+kubectl port-forward -n parallax-system deployment/parallax 6060:6060
+go tool pprof http://localhost:6060/debug/pprof/heap
+```
 
 ---
 

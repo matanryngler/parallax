@@ -46,7 +46,13 @@ type ListCronJobReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-const listCronJobFinalizer = "listcronjob.batchops.io/finalizer"
+const (
+	listCronJobFinalizer = "listcronjob.batchops.io/finalizer"
+	// defaultInitImage is the default busybox image used for the init container.
+	// Uses busybox:1 to get latest 1.x patch versions while maintaining compatibility.
+	// Users can override via spec.template.initImage in the CRD.
+	defaultInitImage = "busybox:1"
+)
 
 // +kubebuilder:rbac:groups=batchops.io,resources=listcronjobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batchops.io,resources=listcronjobs/status,verbs=get;update;patch
@@ -217,9 +223,16 @@ func (r *ListCronJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Prepare init containers - start with user-specified ones, then add the required internal init container last
 	initContainers := make([]corev1.Container, len(listCronJob.Spec.Template.InitContainers))
 	copy(initContainers, listCronJob.Spec.Template.InitContainers)
+
+	// Determine init image (use default if not specified)
+	initImage := listCronJob.Spec.Template.InitImage
+	if initImage == "" {
+		initImage = defaultInitImage
+	}
+
 	initContainers = append(initContainers, corev1.Container{
 		Name:  "parallax-init",
-		Image: "busybox",
+		Image: initImage,
 		Command: []string{"sh", "-c", fmt.Sprintf(`
 			# Read the items file
 			ITEMS=$(cat /list/items)
@@ -242,6 +255,7 @@ func (r *ListCronJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			{Name: "list", MountPath: "/list", ReadOnly: true},
 			{Name: "shared", MountPath: "/shared"},
 		},
+		Resources: listCronJob.Spec.Template.InitResources,
 	})
 
 	podSpec := corev1.PodSpec{

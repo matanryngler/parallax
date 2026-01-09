@@ -1,0 +1,130 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListCronJob
+metadata:
+  name: fruit-processor-enhanced
+  labels:
+    app: fruit-processor
+    version: enhanced
+spec:
+  # Reference to ListSource for dynamic list fetching
+  listSourceRef: "fruit-list"
+
+  # Process 2 items at a time
+  parallelism: 2
+
+  # Environment variable name for list items
+  envName: "FRUIT_ITEM"
+
+  # Enhanced Job configuration
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 86400  # Keep jobs for 24 hours
+
+  # Full Kubernetes PodTemplateSpec for maximum flexibility
+  template:
+    metadata:
+      labels:
+        app: fruit-processor
+        component: worker
+      annotations:
+        example.com/processed-by: "parallax-operator"
+    spec:
+      # Use custom service account for RBAC
+      serviceAccountName: fruit-processor-sa
+
+      # Security context for the pod
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+
+      # Custom volumes
+      volumes:
+        - name: config
+          configMap:
+            name: fruit-processor-config
+        - name: temp-storage
+          emptyDir:
+            sizeLimit: "1Gi"
+
+      containers:
+        - name: processor
+          image: "my-registry/fruit-processor:v2.1.0"
+          command: ["./process-fruit.sh"]
+
+          # Container security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          # Additional environment variables
+          env:
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: PROCESSOR_VERSION
+              value: "2.1.0"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          # Environment from ConfigMaps and Secrets
+          envFrom:
+            - configMapRef:
+                name: fruit-processor-config
+            - secretRef:
+                name: fruit-processor-secrets
+
+          # Volume mounts
+          volumeMounts:
+            - name: config
+              mountPath: /etc/config
+              readOnly: true
+            - name: temp-storage
+              mountPath: /tmp/processing
+
+          # Resource requirements
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # Health checks
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "pgrep -x process-fruit.sh"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+      # Node scheduling
+      nodeSelector:
+        node-type: "worker"
+        zone: "processing"
+
+      # Tolerations for dedicated nodes
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "fruit-processing"
+          effect: "NoSchedule"
+
+      # Restart policy
+      restartPolicy: Never
+
+  # CronJob-specific configuration
+  schedule: "*/10 * * * *"  # Run every 10 minutes
+  concurrencyPolicy: "Forbid"
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 2
+  suspend: false

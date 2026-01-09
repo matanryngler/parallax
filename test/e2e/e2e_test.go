@@ -194,7 +194,7 @@ var _ = Describe("Manager", Ordered, func() {
 				cmd := exec.Command("kubectl", "get", "endpoints", metricsServiceName, "-n", namespace)
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("8443"), "Metrics endpoint is not ready")
+				g.Expect(output).To(ContainSubstring("8080"), "Metrics endpoint is not ready")
 			}
 			Eventually(verifyMetricsEndpointReady).Should(Succeed())
 
@@ -203,8 +203,11 @@ var _ = Describe("Manager", Ordered, func() {
 				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("controller-runtime.metrics\tServing metrics server"),
-					"Metrics server not yet started")
+				// Handle both JSON and plaintext log formats
+				g.Expect(output).To(Or(
+					ContainSubstring("controller-runtime.metrics\tServing metrics server"),
+					ContainSubstring(`"logger":"controller-runtime.metrics","msg":"Serving metrics server"`),
+				), "Metrics server not yet started")
 			}
 			Eventually(verifyMetricsServerStarted).Should(Succeed())
 
@@ -219,7 +222,7 @@ var _ = Describe("Manager", Ordered, func() {
 							"name": "curl",
 							"image": "curlimages/curl:latest",
 							"command": ["/bin/sh", "-c"],
-							"args": ["curl -v -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics"],
+							"args": ["curl -v http://%s.%s.svc.cluster.local:8080/metrics"],
 							"securityContext": {
 								"allowPrivilegeEscalation": false,
 								"capabilities": {
@@ -234,7 +237,7 @@ var _ = Describe("Manager", Ordered, func() {
 						}],
 						"serviceAccount": "%s"
 					}
-				}`, token, metricsServiceName, namespace, serviceAccountName))
+				}`, metricsServiceName, namespace, serviceAccountName))
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create curl-metrics pod")
 

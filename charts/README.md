@@ -133,7 +133,7 @@ metrics:
 - `parallax_cronjob_cycles_started_total` - Total cycles started
 - `parallax_cronjob_cycles_skipped_total` - Total cycles skipped
 - `parallax_cronjob_cycle_duration_seconds` - Cycle duration
-- `parallax_cronjob_active_jobs` - Current active jobs
+- `parallax_cronjob_active_pods` - Current number of active pods processing items
 
 **Example PromQL queries:**
 ```promql

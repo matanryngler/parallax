@@ -1,0 +1,156 @@
+---
+# PostgreSQL Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  labels:
+    example: postgres-etl
+type: Opaque
+stringData:
+  postgres-password: postgres
+  database: testdb
+
+---
+# PostgreSQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+    example: postgres-etl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: postgres-password
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: database
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+            - name: init-script
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: postgres-storage
+          emptyDir: {}
+        - name: init-script
+          configMap:
+            name: postgres-init
+
+---
+# Service to expose PostgreSQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+    example: postgres-etl
+spec:
+  selector:
+    app: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+      name: postgres
+  type: ClusterIP
+
+---
+# ConfigMap with initialization script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    example: postgres-etl
+data:
+  01-init.sql: |
+    -- Create orders table
+    CREATE TABLE IF NOT EXISTS orders (
+        order_id SERIAL PRIMARY KEY,
+        customer VARCHAR(100) NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP
+    );
+
+    -- Create index on status for efficient queries
+    CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+    CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
+
+    -- Insert sample data
+    INSERT INTO orders (customer, status, created_at) VALUES
+        ('alice@example.com', 'pending', NOW() - INTERVAL '5 hours'),
+        ('bob@example.com', 'pending', NOW() - INTERVAL '4 hours'),
+        ('charlie@example.com', 'pending', NOW() - INTERVAL '3 hours'),
+        ('david@example.com', 'pending', NOW() - INTERVAL '2 hours'),
+        ('eve@example.com', 'pending', NOW() - INTERVAL '1 hour')
+    ON CONFLICT DO NOTHING;
+
+    -- Create function to update timestamp
+    CREATE OR REPLACE FUNCTION update_updated_at_column()
+    RETURNS TRIGGER AS $$
+    BEGIN
+        NEW.updated_at = NOW();
+        RETURN NEW;
+    END;
+    $$ language 'plpgsql';
+
+    -- Create trigger to auto-update updated_at
+    DROP TRIGGER IF EXISTS update_orders_updated_at ON orders;
+    CREATE TRIGGER update_orders_updated_at
+        BEFORE UPDATE ON orders
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column();
+
+    -- Grant permissions
+    GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres;
+    GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postgres;

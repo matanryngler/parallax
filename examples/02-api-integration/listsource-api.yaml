@@ -1,0 +1,40 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListSource
+metadata:
+  name: api-items
+  labels:
+    example: api-integration
+spec:
+  # Type: api (fetch from REST endpoint)
+  type: api
+
+  # API configuration
+  api:
+    # URL of the API endpoint
+    # Using the mock server service: http://mock-api.default.svc.cluster.local
+    # For external APIs, use: https://api.example.com/v1/items
+    url: http://mock-api/
+
+    # Optional: Add headers (for authentication, content-type, etc.)
+    headers:
+      Accept: application/json
+      User-Agent: parallax/v1
+    # For authentication, use the auth field below instead of Authorization header
+
+    # Optional: Authentication
+    # auth:
+    #   type: bearer
+    #   secretRef:
+    #     name: api-credentials
+    #     key: token
+
+    # JSONPath to extract items from the response
+    # This extracts the "id" field from each item in the "items" array
+    # Response: {"items": [{"id": "task-001"}, {"id": "task-002"}]}
+    # Result: ["task-001", "task-002"]
+    jsonPath: "$.items[*].id"
+
+  # Refresh interval in seconds
+  # The API will be polled every 30 seconds to fetch new data
+  # Set to 0 to fetch only once
+  intervalSeconds: 30

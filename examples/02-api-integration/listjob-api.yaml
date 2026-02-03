@@ -1,0 +1,55 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: api-processor
+  labels:
+    example: api-integration
+spec:
+  # Reference the API-based ListSource
+  listSourceRef: api-items
+
+  # Run up to 3 jobs in parallel
+  parallelism: 3
+
+  # Job template
+  template:
+    image: alpine:3.19
+
+    command:
+      - sh
+      - -c
+      - |
+        echo "========================================="
+        echo "Processing API item: $ITEM"
+        echo "Job index: $JOB_COMPLETION_INDEX"
+        echo "========================================="
+
+        echo "Step 1: Fetching details for item $ITEM..."
+        sleep 1
+
+        echo "Step 2: Processing item data..."
+        sleep 2
+
+        echo "Step 3: Finalizing..."
+        sleep 1
+
+        echo "✓ Successfully processed item: $ITEM"
+        echo "========================================="
+
+    envName: ITEM
+
+    env:
+      - name: JOB_COMPLETION_INDEX
+        value: "$(JOB_COMPLETION_INDEX)"
+
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+      limits:
+        cpu: "200m"
+        memory: "128Mi"
+
+  ttlSecondsAfterFinished: 1800
+  backoffLimit: 3
+  activeDeadlineSeconds: 600

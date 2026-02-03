@@ -1,0 +1,80 @@
+---
+# Mock API Server Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-api
+  labels:
+    app: mock-api
+    example: api-integration
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-api
+  template:
+    metadata:
+      labels:
+        app: mock-api
+    spec:
+      containers:
+        - name: api
+          # hashicorp/http-echo is a simple HTTP server for testing
+          image: hashicorp/http-echo:0.2.3
+          args:
+            - -text
+            - |
+              {
+                "status": "success",
+                "timestamp": "2025-02-03T10:00:00Z",
+                "items": [
+                  {"id": "task-001", "priority": "high", "description": "Process urgent order"},
+                  {"id": "task-002", "priority": "medium", "description": "Update inventory"},
+                  {"id": "task-003", "priority": "low", "description": "Send report"},
+                  {"id": "task-004", "priority": "medium", "description": "Sync data"},
+                  {"id": "task-005", "priority": "high", "description": "Handle webhook"}
+                ]
+              }
+            - -listen
+            - :8080
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+---
+# Service to expose the mock API
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-api
+  labels:
+    app: mock-api
+    example: api-integration
+spec:
+  selector:
+    app: mock-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+      name: http
+  type: ClusterIP

@@ -17,6 +17,17 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
+        description: "ListJob is a Kubernetes custom resource that processes items
+          from a ListSource in parallel.\nCreates Kubernetes Jobs with indexed completion
+          mode, where each job processes one item.\n\nThe controller:\n 1. Fetches
+          items from the referenced ListSource (or uses StaticList)\n 2. Creates a
+          Kubernetes Job with indexed completion mode\n 3. Each job index corresponds
+          to one item\n 4. Items are injected as environment variables in job pods\n
+          5. Jobs run in parallel up to the specified Parallelism limit\n\nExample
+          usage:\n\n\tapiVersion: batchops.example.com/v1alpha1\n\tkind: ListJob\n\tmetadata:\n\t
+          \ name: process-orders\n\tspec:\n\t  listSourceRef: order-list\n\t  parallelism:
+          5\n\t  template:\n\t    image: myapp/processor:v1\n\t    command: [\"process-order.sh\"]\n\t
+          \   envName: ORDER_ID"
         properties:
           apiVersion:
             description: |-
@@ -36,28 +47,77 @@ spec:
           metadata:
             type: object
           spec:
+            description: |-
+              Spec defines the desired state of the ListJob.
+              Specifies items to process and job configuration.
             properties:
               activeDeadlineSeconds:
+                description: |-
+                  ActiveDeadlineSeconds is the maximum duration (in seconds) for the Job.
+                  The Job is terminated if it runs longer than this limit.
+                  Helps prevent runaway or stuck jobs.
+                  Examples:
+                    - 600: 10 minutes
+                    - 3600: 1 hour
+                    - 7200: 2 hours
+                  If not specified, Jobs run indefinitely until completion or failure.
                 format: int64
                 type: integer
               backoffLimit:
+                description: |-
+                  BackoffLimit specifies the number of retries before marking a Job as failed.
+                  Each retry creates a new pod after the previous one fails.
+                  Default: 6 (Kubernetes default) if not specified.
+                  Set to 0 for no retries (fail immediately).
+                  Set higher for transient failures (network issues, rate limits).
                 format: int32
                 type: integer
               deleteAfter:
+                description: |-
+                  DeleteAfter is an alternative to TTLSecondsAfterFinished using Duration format.
+                  Example: "30m" for 30 minutes, "2h" for 2 hours.
+                  If both are specified, TTLSecondsAfterFinished takes precedence.
                 type: string
               listSourceRef:
+                description: |-
+                  ListSourceRef is the name of the ListSource to get items from.
+                  The ListSource must exist in the same namespace.
+                  Mutually exclusive with StaticList - use one or the other.
+                  Example: "my-items" to reference a ListSource named "my-items"
                 type: string
               parallelism:
+                description: |-
+                  Parallelism specifies the maximum number of jobs to run concurrently.
+                  Controls resource consumption and processing speed.
+                  Examples:
+                    - 1: Sequential processing (one at a time)
+                    - 5: Moderate parallelism (good for most workloads)
+                    - 20: High parallelism (for large clusters or quick turnaround)
+                  Required field. Minimum value: 1.
                 format: int32
+                minimum: 1
                 type: integer
               staticList:
+                description: |-
+                  StaticList is a hardcoded list of items to process.
+                  Mutually exclusive with ListSourceRef - use one or the other.
+                  Useful for one-off jobs or testing without creating a ListSource.
+                  Example: ["item1", "item2", "item3"]
                 items:
                   type: string
                 type: array
               template:
+                description: |-
+                  Template defines the Job pod specification for processing items.
+                  Each item creates a separate Job using this template.
+                  The item value is injected as an environment variable.
+                  Required field.
                 properties:
                   affinity:
-                    description: Affinity is a group of affinity scheduling rules.
+                    description: |-
+                      Affinity defines pod scheduling constraints (node affinity, pod affinity/anti-affinity).
+                      Use to control pod placement across nodes or in relation to other pods.
+                      Example: Spreading jobs across availability zones.
                     properties:
                       nodeAffinity:
                         description: Describes node affinity scheduling rules for
@@ -984,10 +1044,18 @@ spec:
                         type: object
                     type: object
                   command:
+                    description: |-
+                      Command is the command to execute in the container.
+                      Overrides the image's default ENTRYPOINT.
+                      Example: ["/bin/sh", "-c", "process-item.sh"]
                     items:
                       type: string
                     type: array
                   env:
+                    description: |-
+                      Env is a list of additional environment variables for the container.
+                      These are added alongside the item environment variable.
+                      Standard Kubernetes EnvVar format with support for valueFrom.
                     items:
                       description: EnvVar represents an environment variable present
                         in a Container.
@@ -1107,6 +1175,9 @@ spec:
                       type: object
                     type: array
                   envFrom:
+                    description: |-
+                      EnvFrom sources to populate environment variables in the container.
+                      Allows loading all keys from ConfigMaps or Secrets as environment variables.
                     items:
                       description: EnvFromSource represents the source of a set of
                         ConfigMaps
@@ -1152,14 +1223,29 @@ spec:
                       type: object
                     type: array
                   envName:
+                    description: |-
+                      EnvName is the name of the environment variable that will receive the item value.
+                      The controller injects this environment variable with the item to process.
+                      Default: "ITEM" if not specified.
+                      Example: "CUSTOMER_ID", "FILE_PATH", "ORDER_ID"
                     type: string
                   image:
+                    description: |-
+                      Image is the container image to run for processing each item.
+                      Should include the registry and tag for reproducibility.
+                      Example: "myregistry/processor:v1.2.3"
+                      Required field.
                     type: string
                   imagePullPolicy:
-                    description: PullPolicy describes a policy for if/when to pull
-                      a container image
+                    description: |-
+                      ImagePullPolicy specifies when to pull the container image.
+                      Valid values: Always, Never, IfNotPresent.
+                      Default: IfNotPresent for tagged images, Always for :latest.
                     type: string
                   imagePullSecrets:
+                    description: |-
+                      ImagePullSecrets are references to secrets for pulling images from private registries.
+                      Required for private Docker registries.
                     items:
                       description: |-
                         LocalObjectReference contains enough information to let you locate the
@@ -1178,6 +1264,10 @@ spec:
                       x-kubernetes-map-type: atomic
                     type: array
                   initContainers:
+                    description: |-
+                      InitContainers are containers that run before the main container.
+                      Common uses: setup tasks, waiting for dependencies, downloading data.
+                      Init containers run sequentially and must complete successfully.
                     items:
                       description: A single application container that you want to
                         run within a pod.
@@ -2609,12 +2699,17 @@ spec:
                       type: object
                     type: array
                   initImage:
-                    description: 'InitImage is the container image to use for the
-                      internal parallax-init container (default: busybox:1.36)'
+                    description: |-
+                      InitImage is the container image to use for the internal parallax-init container.
+                      This init container prepares the item environment variable.
+                      Default: "busybox:1.36" if not specified.
+                      Only override if you need a specific init container image.
                     type: string
                   initResources:
-                    description: InitResources are the resource requirements for the
-                      internal parallax-init container
+                    description: |-
+                      InitResources are the resource requirements for the internal parallax-init container.
+                      Default: minimal resources (10m CPU, 10Mi memory) if not specified.
+                      Increase if the init container performs complex setup.
                     properties:
                       claims:
                         description: |-
@@ -2675,8 +2770,15 @@ spec:
                   labels:
                     additionalProperties:
                       type: string
+                    description: |-
+                      Labels are additional labels to apply to Job pods.
+                      Useful for monitoring, cost tracking, and service mesh integration.
+                      These are merged with controller-managed labels.
                     type: object
                   ports:
+                    description: |-
+                      Ports are network ports to expose from the container.
+                      Typically not needed for batch jobs, but useful for debugging or metrics.
                     items:
                       description: ContainerPort represents a network port in a single
                         container.
@@ -2715,8 +2817,10 @@ spec:
                       type: object
                     type: array
                   resources:
-                    description: ResourceRequirements describes the compute resource
-                      requirements.
+                    description: |-
+                      Resources defines CPU and memory resource requests and limits.
+                      Important: Always set requests and limits in production to ensure proper scheduling.
+                      Example: requests: {cpu: "500m", memory: "256Mi"}, limits: {cpu: "2", memory: "512Mi"}
                     properties:
                       claims:
                         description: |-
@@ -2775,8 +2879,16 @@ spec:
                         type: object
                     type: object
                   serviceAccountName:
+                    description: |-
+                      ServiceAccountName is the name of the ServiceAccount to use for the pod.
+                      Use for RBAC and workload identity.
+                      If not specified, uses the default ServiceAccount.
                     type: string
                   tolerations:
+                    description: |-
+                      Tolerations allow pods to schedule onto nodes with matching taints.
+                      Use for dedicated node pools, spot instances, or special hardware.
+                      Example: Tolerating spot instance taints for cost savings.
                     items:
                       description: |-
                         The pod this Toleration is attached to tolerates any taint that matches
@@ -2815,6 +2927,10 @@ spec:
                       type: object
                     type: array
                   volumeMounts:
+                    description: |-
+                      VolumeMounts are mount points for volumes in the container.
+                      Must reference volumes defined in the Volumes field.
+                      Example: {name: "data", mountPath: "/data"}
                     items:
                       description: VolumeMount describes a mounting of a Volume within
                         a container.
@@ -2878,6 +2994,10 @@ spec:
                       type: object
                     type: array
                   volumes:
+                    description: |-
+                      Volumes are volumes to attach to the pod.
+                      Common uses: ConfigMaps, Secrets, PersistentVolumes, emptyDir.
+                      Each volume must be mounted by VolumeMounts to be accessible.
                     items:
                       description: Volume represents a named volume in a pod that
                         may be accessed by any container in the pod.
@@ -4668,11 +4788,19 @@ spec:
                       type: object
                     type: array
                 required:
-                - command
                 - envName
                 - image
                 type: object
               ttlSecondsAfterFinished:
+                description: |-
+                  TTLSecondsAfterFinished is the time in seconds to keep completed/failed Jobs.
+                  After this duration, the Job and its pods are automatically deleted.
+                  Helps prevent cluster clutter from old Jobs.
+                  Examples:
+                    - 300: 5 minutes (quick cleanup for dev)
+                    - 3600: 1 hour (standard for production)
+                    - 86400: 24 hours (for debugging or auditing)
+                  If not specified, Jobs are not automatically deleted.
                 format: int32
                 type: integer
             required:
@@ -4680,8 +4808,17 @@ spec:
             - template
             type: object
           status:
+            description: |-
+              Status represents the observed state of the ListJob.
+              Updated by the controller with Job creation status.
             properties:
               conditions:
+                description: |-
+                  Conditions represent the latest available observations of the ListJob's state.
+                  Standard condition types:
+                    - Complete: True if all Jobs have completed successfully
+                    - Failed: True if any Jobs failed after retries
+                    - Running: True if Jobs are currently executing
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -4741,6 +4878,9 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               jobName:
+                description: |-
+                  JobName is the name of the Kubernetes Job created for this ListJob.
+                  Use to query Job status: kubectl get job <jobName>
                 type: string
             type: object
         type: object

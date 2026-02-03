@@ -6,4 +6,63 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: listsource-sample
 spec:
-  # TODO(user): Add fields here
+  # Type of data source: static, api, or postgresql
+  type: static
+
+  # Static list example
+  # For a simple hardcoded list of items
+  staticList:
+    - customer-001
+    - customer-002
+    - customer-003
+    - customer-004
+    - customer-005
+
+  # Refresh interval in seconds (0 for static lists)
+  intervalSeconds: 0
+
+---
+# API Example
+apiVersion: batchops.io/v1alpha1
+kind: ListSource
+metadata:
+  name: listsource-api-sample
+spec:
+  type: api
+  intervalSeconds: 300  # Refresh every 5 minutes
+  api:
+    url: https://api.example.com/v1/items
+    headers:
+      Accept: application/json
+      User-Agent: parallax/v1
+    # Uncomment for authentication:
+    # auth:
+    #   type: bearer
+    #   secretRef:
+    #     name: api-credentials
+    #     key: token
+    jsonPath: "$.items[*].id"
+    timeoutSeconds: 30
+
+---
+# PostgreSQL Example
+apiVersion: batchops.io/v1alpha1
+kind: ListSource
+metadata:
+  name: listsource-postgres-sample
+spec:
+  type: postgresql
+  intervalSeconds: 60  # Refresh every minute
+  postgres:
+    connectionString: "postgresql://user:password@postgres:5432/mydb?sslmode=require"
+    query: "SELECT id FROM orders WHERE status = 'pending' ORDER BY created_at LIMIT 1000"
+    # For parameterized queries, use:
+    # query: "SELECT id FROM orders WHERE status = $1"
+    # queryParams:
+    #   - "pending"
+    sslMode: require
+    # Uncomment for secret-based authentication:
+    # auth:
+    #   secretRef:
+    #     name: db-credentials
+    #     key: password

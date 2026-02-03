@@ -1,0 +1,77 @@
+---
+# Example: Production ListJob with security hardening
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: secure-processor
+  namespace: production
+  labels:
+    environment: production
+    security: hardened
+    example: production-patterns
+spec:
+  listSourceRef: production-data
+  parallelism: 3
+
+  template:
+    image: your-registry/processor:v1.2.3
+    imagePullPolicy: IfNotPresent
+
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        
+        # Verify running as non-root
+        if [ "$(id -u)" = "0" ]; then
+          echo "ERROR: Running as root is not allowed"
+          exit 1
+        fi
+        
+        echo "Running as user: $(id -u), group: $(id -g)"
+        echo "Processing: $ITEM"
+
+    envName: ITEM
+
+    env:
+      - name: API_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: api-credentials
+            key: token
+      - name: DB_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: db-credentials
+            key: password
+
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "256Mi"
+      limits:
+        cpu: "2000m"
+        memory: "512Mi"
+
+    serviceAccountName: parallax-job-runner
+
+    # Volume mounts for writable directories  
+    # Required when using readOnlyRootFilesystem
+    volumes:
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 512Mi
+      - name: cache
+        emptyDir:
+          sizeLimit: 1Gi
+
+    volumeMounts:
+      - name: tmp
+        mountPath: /tmp
+      - name: cache
+        mountPath: /var/cache
+
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 2

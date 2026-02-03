@@ -30,6 +30,16 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
+        description: "ListSource is a Kubernetes custom resource that fetches and
+          maintains a list of items.\nItems are stored in a ConfigMap and can be consumed
+          by ListJobs for parallel processing.\n\nSupported data sources:\n  - Static:
+          Hardcoded list defined in spec\n  - API: REST API with JSONPath extraction\n
+          \ - PostgreSQL: Database query results\n\nThe controller automatically refreshes
+          data based on IntervalSeconds and updates\nthe associated ConfigMap. ListJobs
+          reference the ConfigMap to get current items.\n\nExample usage:\n\n\tapiVersion:
+          batchops.example.com/v1alpha1\n\tkind: ListSource\n\tmetadata:\n\t  name:
+          my-items\n\tspec:\n\t  type: api\n\t  intervalSeconds: 300\n\t  api:\n\t
+          \   url: https://api.example.com/items\n\t    jsonPath: \"$.items[*].id\""
         properties:
           apiVersion:
             description: |-
@@ -49,35 +59,66 @@ spec:
           metadata:
             type: object
           spec:
+            description: |-
+              Spec defines the desired state of the ListSource.
+              Specifies the data source type and configuration.
             properties:
               api:
+                description: |-
+                  API configuration for REST API data sources.
+                  Required when Type is "api", ignored otherwise.
+                  Defines the API endpoint, authentication, and item extraction.
                 properties:
                   auth:
+                    description: |-
+                      Auth specifies authentication configuration for the API request.
+                      Supports Basic Auth and Bearer Token authentication.
+                      Credentials are stored in Kubernetes Secrets.
                     properties:
                       passwordKey:
-                        description: PasswordKey is required for basic auth, ignored
-                          for bearer auth
+                        description: |-
+                          PasswordKey is the key in the Secret containing the password or token.
+                          Required for basic auth (password), used as token for bearer auth.
+                          Example: "password" to read from secret.data.password
                         type: string
                       secretRef:
+                        description: |-
+                          SecretRef references the Kubernetes Secret containing credentials.
+                          The secret must exist in the same namespace as the ListSource (or specified namespace).
                         properties:
                           key:
+                            description: |-
+                              Key is the key within the Secret's data field.
+                              Example: "token", "password", "username"
                             type: string
                           name:
+                            description: |-
+                              Name is the name of the Kubernetes Secret.
+                              Example: "api-credentials" or "db-password"
                             type: string
                           namespace:
+                            description: |-
+                              Namespace is the namespace containing the Secret.
+                              If not specified, uses the same namespace as the ListSource.
+                              Cross-namespace secret access requires appropriate RBAC permissions.
                             type: string
                         required:
                         - key
                         - name
                         type: object
                       type:
+                        description: |-
+                          Type specifies the authentication method.
+                          Valid values: "basic" (HTTP Basic Auth) or "bearer" (Bearer Token).
                         enum:
                         - basic
                         - bearer
                         type: string
                       usernameKey:
-                        description: UsernameKey is required for basic auth, ignored
-                          for bearer auth
+                        description: |-
+                          UsernameKey is the key in the Secret containing the username.
+                          Required for basic auth, ignored for bearer auth.
+                          Example: "username" to read from secret.data.username
                         type: string
                     required:
                     - secretRef
@@ -86,38 +127,89 @@ spec:
                   headers:
                     additionalProperties:
                       type: string
+                    description: |-
+                      Headers are custom HTTP headers to include in the request.
+                      Common uses: Content-Type, Accept, custom auth headers.
+                      Example: {"Content-Type": "application/json", "X-API-Version": "v1"}
                     type: object
                   jsonPath:
+                    description: |-
+                      JSONPath is the expression used to extract items from the API response.
+                      Uses standard JSONPath syntax to navigate the JSON structure.
+                      Example: "$.items[*].id" extracts all id fields from items array.
+                      Example: "$[*].name" extracts name from root array.
+                      Required for parsing API responses.
                     type: string
                   timeoutSeconds:
-                    description: 'TimeoutSeconds specifies the HTTP request timeout
-                      in seconds (default: 30)'
+                    description: |-
+                      TimeoutSeconds specifies the HTTP request timeout in seconds.
+                      Default: 30 seconds if not specified.
+                      Range: 1-300 seconds (5 minutes max).
+                      Use higher values for slow APIs or large responses.
                     format: int32
                     maximum: 300
                     minimum: 1
                     type: integer
                   url:
+                    description: |-
+                      URL is the REST API endpoint to fetch data from.
+                      Must be a valid HTTP/HTTPS URL.
+                      Example: "https://api.example.com/v1/items"
                     type: string
                 required:
                 - jsonPath
                 - url
                 type: object
               intervalSeconds:
-                minimum: 1
+                description: |-
+                  IntervalSeconds is the refresh interval in seconds.
+                  Determines how often the ListSource fetches new data.
+                  For static lists, set to 0 (no refresh needed).
+                  For API/PostgreSQL, typical values:
+                    - 60: Every minute (frequent updates)
+                    - 300: Every 5 minutes (moderate polling)
+                    - 3600: Every hour (periodic batch)
+                  Minimum value: 1 second (if specified).
+                  Default: 0 (fetch once, no refresh).
+                minimum: 0
                 type: integer
               postgres:
+                description: |-
+                  Postgres configuration for PostgreSQL data sources.
+                  Required when Type is "postgresql", ignored otherwise.
+                  Defines the database connection and query.
                 properties:
                   auth:
+                    description: |-
+                      Auth specifies authentication configuration for PostgreSQL.
+                      Uses Kubernetes Secrets to store credentials securely.
+                      If not specified, credentials from ConnectionString are used.
                     properties:
                       passwordKey:
+                        description: |-
+                          PasswordKey is the key in the Secret containing the database password.
+                          Example: "password" to read from secret.data.password
                         type: string
                       secretRef:
+                        description: |-
+                          SecretRef references the Kubernetes Secret containing the password.
+                          The secret must exist in the same namespace as the ListSource (or specified namespace).
                         properties:
                           key:
+                            description: |-
+                              Key is the key within the Secret's data field.
+                              Example: "token", "password", "username"
                             type: string
                           name:
+                            description: |-
+                              Name is the name of the Kubernetes Secret.
+                              Example: "api-credentials" or "db-password"
                             type: string
                           namespace:
+                            description: |-
+                              Namespace is the namespace containing the Secret.
+                              If not specified, uses the same namespace as the ListSource.
+                              Cross-namespace secret access requires appropriate RBAC permissions.
                             type: string
                         required:
                         - key
@@ -128,23 +220,41 @@ spec:
                     - secretRef
                     type: object
                   connectionString:
+                    description: |-
+                      ConnectionString is the PostgreSQL connection URL.
+                      Format: "postgresql://username:password@host:port/database?options"
+                      Example: "postgresql://user:pass@postgres:5432/mydb?sslmode=require"
+                      For production, use Auth field instead of embedding credentials in URL.
                     type: string
                   query:
                     description: |-
-                      Query should use $1, $2, etc. for parameters to prevent SQL injection
-                      Example: "SELECT name FROM users WHERE status = $1"
+                      Query is the SQL SELECT statement to fetch items.
+                      IMPORTANT: Use parameterized queries with $1, $2, etc. to prevent SQL injection.
+                      The query should return rows where one column contains the item IDs.
+                      Example: "SELECT id FROM orders WHERE status = $1"
+                      Example: "SELECT user_id FROM users WHERE active = true"
                     type: string
                   queryParams:
                     description: |-
-                      QueryParams are the parameters to use with parameterized queries
-                      Use this with $1, $2, etc. placeholders in the Query field
+                      QueryParams are values for parameterized query placeholders ($1, $2, etc.).
+                      Use this with $1, $2, etc. placeholders in the Query field for safe parameterization.
+                      Example: If Query is "SELECT id FROM orders WHERE status = $1",
+                      QueryParams would be ["pending"] to bind "pending" to $1.
                     items:
                       type: string
                     type: array
                   sslMode:
                     description: |-
-                      SSLMode specifies the PostgreSQL SSL mode (default: "require")
-                      Valid values: disable, allow, prefer, require, verify-ca, verify-full
+                      SSLMode specifies the PostgreSQL SSL/TLS mode.
+                      Default: "require" (SSL required, certificate not verified).
+                      Valid values:
+                        - disable: No SSL (insecure, not recommended)
+                        - allow: SSL if server supports it
+                        - prefer: Try SSL, fall back to non-SSL
+                        - require: SSL required, certificate not verified
+                        - verify-ca: SSL required, verify server certificate
+                        - verify-full: SSL required, verify certificate and hostname
+                      Use "verify-full" for production with proper certificates.
                     enum:
                     - disable
                     - allow
@@ -158,10 +268,19 @@ spec:
                 - query
                 type: object
               staticList:
+                description: |-
+                  StaticList is a hardcoded list of items.
+                  Required when Type is "static", ignored otherwise.
+                  Each string becomes an item in the generated ConfigMap.
+                  Example: ["item1", "item2", "item3"]
                 items:
                   type: string
                 type: array
               type:
+                description: |-
+                  Type specifies the data source type.
+                  Must be one of: "static", "api", or "postgresql".
+                  This determines which config field (StaticList, API, or Postgres) is used.
                 enum:
                 - static
                 - api
@@ -171,8 +290,16 @@ spec:
             - type
             type: object
           status:
+            description: |-
+              Status represents the observed state of the ListSource.
+              Updated by the controller with fetch results and errors.
             properties:
               conditions:
+                description: |-
+                  Conditions represent the latest available observations of the ListSource's state.
+                  Standard condition types:
+                    - Ready: True if data was successfully fetched and ConfigMap updated
+                    - Error: True if there was an error fetching data
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -232,13 +359,28 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               error:
+                description: |-
+                  Error contains the error message from the last fetch attempt.
+                  Empty if the last fetch was successful.
+                  Contains details about API errors, database connection failures, etc.
                 type: string
               itemCount:
+                description: |-
+                  ItemCount is the number of items in the current list.
+                  Reflects the count in the generated ConfigMap.
+                  Use to monitor data volume and detect unexpected changes.
                 type: integer
               lastUpdateTime:
+                description: |-
+                  LastUpdateTime is the timestamp of the last successful data fetch.
+                  Updated each time the ListSource successfully retrieves new data.
+                  Use to monitor staleness and detect fetch failures.
                 format: date-time
                 type: string
               state:
+                description: |-
+                  State indicates the current operational state.
+                  Common values: "Active", "Pending", "Error", "Stale".
                 type: string
             type: object
         type: object

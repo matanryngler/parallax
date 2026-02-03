@@ -6,4 +6,190 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: listcronjob-sample
 spec:
-  # TODO(user): Add fields here
+  # Cron schedule (every 5 minutes for demo)
+  schedule: "*/5 * * * *"
+
+  # Reference to a ListSource
+  listSourceRef: listsource-sample
+
+  # Maximum number of jobs to run in parallel per schedule
+  parallelism: 3
+
+  # Concurrency policy: Allow, Forbid, or Replace
+  # Forbid prevents overlapping runs
+  concurrencyPolicy: Forbid
+
+  # Skip runs if they can't start within 5 minutes
+  startingDeadlineSeconds: 300
+
+  # Keep last 3 successful runs
+  successfulJobsHistoryLimit: 3
+
+  # Keep last 1 failed run
+  failedJobsHistoryLimit: 1
+
+  # Set to true to pause scheduling
+  suspend: false
+
+  # Job template configuration
+  template:
+    image: alpine:3.19
+
+    command:
+      - sh
+      - -c
+      - |
+        echo "Scheduled job running at $(date)"
+        echo "Processing item: $ITEM"
+        sleep 3
+        echo "Item $ITEM completed"
+
+    envName: ITEM
+
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+
+  # Clean up completed jobs after 1 hour
+  ttlSecondsAfterFinished: 3600
+
+  # Retry failed jobs up to 2 times
+  backoffLimit: 2
+
+  # Kill jobs that run longer than 15 minutes
+  activeDeadlineSeconds: 900
+
+---
+# Daily report generation example
+apiVersion: batchops.io/v1alpha1
+kind: ListCronJob
+metadata:
+  name: listcronjob-daily-reports
+spec:
+  # Run daily at midnight UTC
+  schedule: "0 0 * * *"
+
+  # Static list of reports to generate
+  staticList:
+    - sales-report
+    - inventory-report
+    - customer-report
+    - performance-report
+
+  parallelism: 2
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+
+  successfulJobsHistoryLimit: 7  # Keep one week
+  failedJobsHistoryLimit: 3
+
+  template:
+    image: myregistry/report-generator:v1.0.0
+
+    command:
+      - /app/generate-report
+      - --format=pdf
+      - --report=$REPORT_NAME
+
+    envName: REPORT_NAME
+
+    env:
+      - name: OUTPUT_PATH
+        value: /reports
+      - name: TIMEZONE
+        value: America/New_York
+
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "2000m"
+        memory: "1Gi"
+
+  ttlSecondsAfterFinished: 86400  # 24 hours
+  backoffLimit: 1
+  activeDeadlineSeconds: 7200  # 2 hours max
+
+---
+# Hourly data sync example
+apiVersion: batchops.io/v1alpha1
+kind: ListCronJob
+metadata:
+  name: listcronjob-hourly-sync
+spec:
+  # Run every hour
+  schedule: "0 * * * *"
+
+  # Fetch fresh data from API on each run
+  listSourceRef: listsource-api-sample
+
+  parallelism: 10
+  concurrencyPolicy: Replace  # Cancel old run if still active
+
+  template:
+    image: busybox:1.36
+    command:
+      - sh
+      - -c
+      - |
+        echo "Syncing item: $ITEM_ID at $(date)"
+        # Add sync logic here
+    envName: ITEM_ID
+
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "256Mi"
+      limits:
+        cpu: "1000m"
+        memory: "512Mi"
+
+  ttlSecondsAfterFinished: 3600
+  activeDeadlineSeconds: 1800  # 30 minutes
+
+---
+# Weekly maintenance example
+apiVersion: batchops.io/v1alpha1
+kind: ListCronJob
+metadata:
+  name: listcronjob-weekly-maintenance
+spec:
+  # Run weekly on Sunday at 2 AM UTC
+  schedule: "0 2 * * 0"
+
+  listSourceRef: listsource-sample
+
+  parallelism: 1  # Sequential processing
+  concurrencyPolicy: Forbid
+
+  # Allow jobs to start up to 1 hour late
+  startingDeadlineSeconds: 3600
+
+  successfulJobsHistoryLimit: 4  # Keep one month
+  failedJobsHistoryLimit: 2
+
+  template:
+    image: maintenance:latest
+    command:
+      - /app/maintenance
+      - --target=$TARGET
+    envName: TARGET
+
+    serviceAccountName: maintenance-sa
+
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "1Gi"
+      limits:
+        cpu: "4000m"
+        memory: "2Gi"
+
+  ttlSecondsAfterFinished: 604800  # 7 days
+  backoffLimit: 0  # No retries for maintenance tasks
+  activeDeadlineSeconds: 10800  # 3 hours max

@@ -400,11 +400,18 @@ func (r *ListCronJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *ListCronJobReconciler) trackCronJobCycles(ctx context.Context, listCronJob *batchopsv1alpha1.ListCronJob, cronJob *batchv1.CronJob) error {
 	log := ctrl.LoggerFrom(ctx)
 
-	// Track active jobs metric
-	metrics.CronJobActiveJobs.WithLabelValues(
-		listCronJob.Name,
-		listCronJob.Namespace,
-	).Set(float64(len(cronJob.Status.Active)))
+	// Track active pods metric - count active pods across all active jobs
+	var totalActivePods int32
+	for _, jobRef := range cronJob.Status.Active {
+		job := &batchv1.Job{}
+		err := r.Get(ctx, types.NamespacedName{Name: jobRef.Name, Namespace: jobRef.Namespace}, job)
+		if err != nil {
+			log.V(1).Info("Failed to get active job for metrics", "job", jobRef.Name, "error", err)
+			continue
+		}
+		totalActivePods += job.Status.Active
+	}
+	metrics.CronJobActivePods.WithLabelValues(listCronJob.Name, listCronJob.Namespace).Set(float64(totalActivePods))
 
 	// Track cycle duration when cycle completes (active jobs = 0)
 	if len(cronJob.Status.Active) == 0 && listCronJob.Status.LastScheduleTime != nil {

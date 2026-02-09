@@ -49,11 +49,11 @@ var (
 		[]string{"listcronjob", "namespace"},
 	)
 
-	// CronJobActiveJobs tracks the current number of active jobs for a ListCronJob
-	CronJobActiveJobs = prometheus.NewGaugeVec(
+	// CronJobActivePods tracks the current number of active pods processing items for a ListCronJob
+	CronJobActivePods = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "parallax_cronjob_active_jobs",
-			Help: "Current number of active jobs for a ListCronJob",
+			Name: "parallax_cronjob_active_pods",
+			Help: "Current number of active pods processing items for a ListCronJob",
 		},
 		[]string{"listcronjob", "namespace"},
 	)
@@ -65,6 +65,6 @@ func init() {
 		CronJobCyclesStarted,
 		CronJobCyclesSkipped,
 		CronJobCycleDuration,
-		CronJobActiveJobs,
+		CronJobActivePods,
 	)
 }

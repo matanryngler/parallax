@@ -103,10 +103,16 @@ make docker-push IMG=my-registry/parallax:tag
 
 ### Key Features
 
-**Data Sources**: ListSource supports three types:
+**Data Sources**: ListSource supports three types (`api/v1alpha1/listsource_types.go`):
 - `static`: Hardcoded list of items
 - `api`: REST API with JSONPath extraction
+  - Authentication: `basic` (username/password) or `bearer` (token)
+  - Configurable timeout (1-300 seconds, default 30)
+  - Custom headers support
 - `postgresql`: Database queries with connection pooling
+  - **Security**: Uses parameterized queries with `$1`, `$2` placeholders
+  - SSL modes: disable, allow, prefer, require, verify-ca, verify-full (default: require)
+  - Password stored in Kubernetes Secrets
 
 **Job Processing**: Each list item becomes an environment variable in a separate Job pod, enabling true parallel processing with configurable parallelism.
 
@@ -117,12 +123,20 @@ make docker-push IMG=my-registry/parallax:tag
 ```
 ├── api/v1alpha1/           # CRD definitions and types
 ├── internal/controller/    # Controller implementations
+├── internal/metrics/       # Prometheus metrics definitions
 ├── cmd/main.go            # Main entry point
 ├── config/                # Kubernetes manifests and Kustomize configs
 ├── charts/                # Helm charts (auto-synced from config/)
 ├── test/e2e/             # End-to-end tests
 └── scripts/              # Build and utility scripts
 ```
+
+### Useful Scripts
+- `scripts/pre-commit.sh`: Complete validation (same as `make ci-all`)
+- `scripts/e2e-functionality.sh`: Full E2E test suite with cluster management
+- `scripts/e2e-quick.sh`: Quick E2E tests against existing cluster
+- `scripts/bump-chart-version.sh`: Bump Helm chart versions (called by `make bump-chart-version`)
+- `scripts/validate-release.sh`: Validate release artifacts
 
 ## Development Workflow
 
@@ -148,10 +162,14 @@ make docker-push IMG=my-registry/parallax:tag
 - `METRICS_BIND_ADDRESS`: Metrics server address (default: `:8080`)
 - `LEADER_ELECT`: Enable leader election (default: `false`)
 - `LOG_LEVEL`: Log level - debug, info, warn, error (default: `info`)
+- `NAMESPACE`: Watch specific namespace (default: all namespaces)
 
 ### Resource Requirements
-- **Minimum**: CPU 100m, Memory 128Mi
-- **Recommended**: CPU 500m, Memory 256Mi
+- **Minimum**: CPU 100m, Memory 64Mi (1-10 resources)
+- **Recommended**: CPU 500m, Memory 128Mi (10-50 resources, production default)
+- **Large Scale**: CPU 500m, Memory 192Mi (50-100+ resources)
+
+Memory scales sub-linearly: base ~24MB + 150-400KB per resource depending on complexity.
 
 ## Helm Charts
 
@@ -161,6 +179,25 @@ Two charts in `charts/`:
 
 Charts are automatically synchronized from `config/` using `make sync-all`. Never edit chart templates directly.
 
+## Metrics
+
+The operator exposes Prometheus metrics on port 8080 (configurable via `METRICS_BIND_ADDRESS`):
+
+**ListCronJob Metrics** (`internal/metrics/metrics.go`):
+- `parallax_cronjob_cycles_started_total`: Total cycles started
+- `parallax_cronjob_cycles_skipped_total`: Total cycles skipped (with reason label)
+- `parallax_cronjob_cycle_duration_seconds`: Duration of last completed cycle
+- `parallax_cronjob_active_pods`: Current number of active pods processing items
+
+**Controller-Runtime Metrics**: Standard controller metrics automatically exposed (reconciliation rates, queue depths, etc.)
+
+Access metrics:
+```bash
+# Port-forward to access locally
+kubectl port-forward -n parallax-system deployment/parallax 8080:8080
+curl http://localhost:8080/metrics
+```
+
 ## Security
 
 - Uses RBAC with minimal required permissions
@@ -168,6 +205,8 @@ Charts are automatically synchronized from `config/` using `make sync-all`. Neve
 - Regular security scanning with gosec
 - Container images are signed with cosign
 - Secrets handled securely for API and database authentication
+
+**PostgreSQL Security**: Always use parameterized queries with `$1`, `$2` placeholders and the `queryParams` field to prevent SQL injection. Never concatenate user input into queries.
 
 ## Debugging
 
@@ -192,6 +231,24 @@ kubectl logs -n parallax-system deployment/parallax -f
 
 # Check controller manager events
 kubectl get events -n parallax-system --sort-by='.lastTimestamp'
+```
+
+### Performance Profiling
+```bash
+# Enable profiling (disabled by default)
+# In Helm values: operator.profiling.enabled=true
+
+# Port-forward to profiling endpoint
+kubectl port-forward -n parallax-system deployment/parallax 6060:6060
+
+# Analyze memory usage
+go tool pprof http://localhost:6060/debug/pprof/heap
+
+# Analyze CPU usage
+go tool pprof http://localhost:6060/debug/pprof/profile
+
+# View goroutines
+go tool pprof http://localhost:6060/debug/pprof/goroutine
 ```
 
 ### Common Issues

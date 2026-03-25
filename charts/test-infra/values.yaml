@@ -1,0 +1,9 @@
+postgres:
+  image: postgres:16-alpine
+  password: postgres
+  database: testdb
+
+mockApi:
+  image:
+    repository: parallax-test-api
+    tag: integration

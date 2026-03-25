@@ -21,15 +21,17 @@ This spec defines a unified, Helm-native workflow where **all** dependencies are
 The workflow will be managed by a shell script (`scripts/test-integration.sh`) triggered by the Makefile.
 
 1.  **Build Phase**:
-    - Build Operator image (`parallax:integration`).
-    - Build Mock API server image (`parallax-test-api:integration`).
+    - Build Operator image as `parallax:integration`.
+    - Build Mock API server image as `parallax-test-api:integration` (source: `test/local/testdata/api-server/`).
 2.  **Setup Phase**:
     - `kind create cluster --name parallax-integration`.
-    - `kind load docker-image` for both images.
+    - `kind load docker-image parallax:integration --name parallax-integration`.
+    - `kind load docker-image parallax-test-api:integration --name parallax-integration`.
 3.  **Deployment Phase (Helm)**:
+    - `kubectl create namespace parallax-system`.
     - `helm install parallax-crds ./charts/parallax-crds`.
-    - `helm install parallax ./charts/parallax --set image.tag=integration`.
-    - `helm install test-infra ./charts/test-infra`. (New internal chart).
+    - `helm install parallax ./charts/parallax --namespace parallax-system --set image.repository=parallax --set image.tag=integration --wait`.
+    - `helm install test-infra ./charts/test-infra --set mockApi.image.repository=parallax-test-api --set mockApi.image.tag=integration --wait`.
 4.  **Execution Phase**:
     - `go test -v ./test/integration/...`.
 5.  **Teardown Phase**:
@@ -52,8 +54,8 @@ A new Go test package focusing on end-to-end scenarios:
 ## 4. Implementation Details
 
 ### 4.1 Networking
-- **Operator Communication**: The operator (running as a Pod) will communicate with `test-infra` services using internal Kubernetes DNS (e.g., `http://postgres.default.svc.cluster.local`).
-- **Test Runner Communication**: The `go test` runner (running on the host) will access the `test-infra` services via **Service port-forwarding** or by exposing the `test-infra` Services as `NodePort` on the Kind nodes. This allows the host-based tests to seed data and verify state without complex network bridging.
+- **Operator Communication**: The operator (running in `parallax-system`) will communicate with `test-infra` services using internal Kubernetes DNS (e.g., `http://postgres.default.svc.cluster.local`).
+- **Test Runner Communication**: The `go test` runner (running on the host) will access the `test-infra` services via **kubectl port-forward**. The test suite will automatically manage these background processes in its `BeforeSuite` and ensure they are terminated in `AfterSuite`. This provides a stable localhost-based interface for seeding data and verifying state.
 
 ### 4.2 Image Caching
 To speed up local iteration, the `Makefile` will use standard Docker layer caching for image builds before loading them into Kind.

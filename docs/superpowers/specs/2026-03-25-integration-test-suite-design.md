@@ -43,14 +43,17 @@ A new internal Helm chart located at `charts/test-infra/` will manage:
 ### 3.3 Integration Test Suite (`test/integration/`)
 A new Go test package focusing on end-to-end scenarios:
 - **`integration_suite_test.go`**: Suite setup, wait for operator/infra readiness.
-- **`postgres_test.go`**: Verifies PostgreSQL ListSource -> ListJob flow.
-- **`api_test.go`**: Verifies API ListSource -> ListJob flow.
-- **`listcronjob_test.go`**: Verifies scheduling and concurrency policies.
+- **`static_list_test.go`**: Verifies Example 01 (Basic Static List).
+- **`api_test.go`**: Verifies Example 02 (API Integration).
+- **`postgres_test.go`**: Verifies Example 03 (PostgreSQL ETL).
+- **`scheduled_batch_test.go`**: Verifies Example 04 (Scheduled Batch).
+- **`production_patterns_test.go`**: Verifies Example 05 (Resource limits, security context, monitoring).
 
 ## 4. Implementation Details
 
 ### 4.1 Networking
-By moving all services into the cluster, we use standard Kubernetes DNS (e.g., `http://postgres.default.svc.cluster.local`) instead of host-mapped ports or Docker network bridges.
+- **Operator Communication**: The operator (running as a Pod) will communicate with `test-infra` services using internal Kubernetes DNS (e.g., `http://postgres.default.svc.cluster.local`).
+- **Test Runner Communication**: The `go test` runner (running on the host) will access the `test-infra` services via **Service port-forwarding** or by exposing the `test-infra` Services as `NodePort` on the Kind nodes. This allows the host-based tests to seed data and verify state without complex network bridging.
 
 ### 4.2 Image Caching
 To speed up local iteration, the `Makefile` will use standard Docker layer caching for image builds before loading them into Kind.

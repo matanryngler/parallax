@@ -42,7 +42,7 @@ mockApi:
 ```
 
 - [ ] **Step 3: Create Postgres templates**
-Create a Deployment and Service named `postgres`. The orchestration script (Task 2) will handle creating the `postgres-init` ConfigMap from `test/local/testdata/postgres/init.sql` to avoid Helm file access limitations.
+Create a Deployment and Service named `postgres`. Ensure the Deployment mounts the `postgres-init` ConfigMap (created in Task 2) to `/docker-entrypoint-initdb.d/`. The orchestration script will handle creating this ConfigMap.
 
 - [ ] **Step 4: Create Mock API templates**
 Create a Deployment and Service named `mock-api` using the `parallax-test-api` image.

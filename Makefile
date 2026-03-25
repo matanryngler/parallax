@@ -290,6 +290,13 @@ test-e2e-connect: ## Connect to the E2E test cluster (for debugging).
 	@echo "Or run commands with the test cluster:"
 	@echo "kubectl --kubeconfig=$$(kind get kubeconfig --name $(E2E_CLUSTER_NAME)) get nodes"
 
+##@ Integration Testing
+
+.PHONY: test-integration
+test-integration: export IMG=parallax:integration
+test-integration: docker-build mock-api-build ## Run integration tests (setup cluster, build images, run tests).
+	@./scripts/test-integration.sh
+
 ##@ Build
 
 .PHONY: build
@@ -306,6 +313,10 @@ run: manifests generate fmt vet ## Run a controller from your host.
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG} .
+
+.PHONY: mock-api-build
+mock-api-build: ## Build the mock API image for integration tests.
+	$(CONTAINER_TOOL) build -t parallax-test-api:integration test/local/testdata/api-server/
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

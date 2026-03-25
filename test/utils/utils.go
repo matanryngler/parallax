@@ -239,17 +239,25 @@ func PortForward(namespace, service string, localPort, remotePort int) (*exec.Cm
 
 	cmd := exec.Command("kubectl", "port-forward", fmt.Sprintf("svc/%s", service), fmt.Sprintf("%d:%d", localPort, remotePort), "-n", namespace)
 
+	// Ensure we run from project root and capture output
+	dir, _ := GetProjectDir()
+	cmd.Dir = dir
+	cmd.Stdout = GinkgoWriter
+	cmd.Stderr = GinkgoWriter
+
 	// Start the command in the background
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start port-forward: %v", err)
 	}
 
 	// Wait a brief moment for the port-forward to become active
-	// In a real-world scenario, we might want to poll the port
-	// but a short sleep is often sufficient for kubectl.
-	// We'll use a simple sleep for now as requested.
 	_, _ = fmt.Fprintf(GinkgoWriter, "⏳ Waiting for port-forward to stabilize...\n")
 	time.Sleep(2 * time.Second)
+
+	// Check if the process is still running
+	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+		return nil, fmt.Errorf("port-forward process exited prematurely")
+	}
 
 	return cmd, nil
 }

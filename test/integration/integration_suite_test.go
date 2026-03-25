@@ -56,10 +56,8 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	By("starting port-forward for mock-api")
-	// The requirement specifies 8080:8080. 
-	// Note: If the service port is 80, this might need adjustment to 8080:80
-	// but we follow the task's explicit requirement.
-	mockApiCmd, err = utils.PortForward("default", "mock-api", 8080, 8080)
+	// The service port is 80 (mapping to 8080), so we forward local 8080 to remote 80
+	mockApiCmd, err = utils.PortForward("default", "mock-api", 8080, 80)
 	Expect(err).NotTo(HaveOccurred())
 })
 

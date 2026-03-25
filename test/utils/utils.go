@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 )
@@ -230,6 +231,27 @@ func WaitForDeployment(deploymentName, namespace string, timeoutSecs int) error 
 	}
 	_, _ = fmt.Fprintf(GinkgoWriter, "✅ Deployment %s/%s is ready\n", namespace, deploymentName)
 	return nil
+}
+
+// PortForward starts a background kubectl port-forward process
+func PortForward(namespace, service string, localPort, remotePort int) (*exec.Cmd, error) {
+	_, _ = fmt.Fprintf(GinkgoWriter, "🔌 Starting port-forward for service %s in namespace %s: %d:%d\n", service, namespace, localPort, remotePort)
+
+	cmd := exec.Command("kubectl", "port-forward", fmt.Sprintf("svc/%s", service), fmt.Sprintf("%d:%d", localPort, remotePort), "-n", namespace)
+
+	// Start the command in the background
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start port-forward: %v", err)
+	}
+
+	// Wait a brief moment for the port-forward to become active
+	// In a real-world scenario, we might want to poll the port
+	// but a short sleep is often sufficient for kubectl.
+	// We'll use a simple sleep for now as requested.
+	_, _ = fmt.Fprintf(GinkgoWriter, "⏳ Waiting for port-forward to stabilize...\n")
+	time.Sleep(2 * time.Second)
+
+	return cmd, nil
 }
 
 // GetDeploymentStatus gets detailed deployment status for debugging

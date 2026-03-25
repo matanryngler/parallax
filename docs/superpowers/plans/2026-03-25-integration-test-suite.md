@@ -42,7 +42,7 @@ mockApi:
 ```
 
 - [ ] **Step 3: Create Postgres templates**
-Create a Deployment and Service named `postgres`. Also create a ConfigMap named `postgres-init` containing the `init.sql` script (from `test/local/testdata/postgres/init.sql`), and mount it to `/docker-entrypoint-initdb.d`.
+Create a Deployment and Service named `postgres`. The orchestration script (Task 2) will handle creating the `postgres-init` ConfigMap from `test/local/testdata/postgres/init.sql` to avoid Helm file access limitations.
 
 - [ ] **Step 4: Create Mock API templates**
 Create a Deployment and Service named `mock-api` using the `parallax-test-api` image.
@@ -62,9 +62,14 @@ Create secrets for database and API authentication as used in the examples.
 
 - [ ] **Step 1: Create `scripts/test-integration.sh`**
 Implement the cluster lifecycle: 
-1. Build Operator image (`parallax:integration`).
-2. Build Mock API image (`parallax-test-api:integration`) from `test/local/testdata/api-server/`.
-3. `kind create` -> `kind load` -> `helm install` -> `go test`. 
+1. Build Operator image (`parallax:integration`) and Mock API image (`parallax-test-api:integration`).
+2. `kind create cluster --name parallax-integration` and `kind load docker-image` for both.
+3. `kubectl create namespace parallax-system`.
+4. `helm install parallax-crds ./charts/parallax-crds`.
+5. `helm install parallax ./charts/parallax --namespace parallax-system --set image.repository=parallax --set image.tag=integration --wait`.
+6. `kubectl create configmap postgres-init --from-file=01-init.sql=test/local/testdata/postgres/init.sql`.
+7. `helm install test-infra ./charts/test-infra --set mockApi.image.repository=parallax-test-api --set mockApi.image.tag=integration --wait`.
+8. `go test -v ./test/integration/...`.
 Use a `trap` to ensure cluster deletion.
 
 - [ ] **Step 2: Add `test-integration` to `Makefile`**
@@ -84,7 +89,12 @@ Add the target. Ensure it handles triggering the build of both the operator and 
 Implement a helper to port-forward services from the Kind cluster to the host.
 
 - [ ] **Step 2: Create `test/integration/integration_suite_test.go`**
-Initialize the Ginkgo suite. Add `BeforeSuite` to wait for resources and `AfterSuite` for cleanup.
+Initialize the Ginkgo suite. In `BeforeSuite`:
+1. Wait for Operator and Infra Pods (Postgres, Mock API) to be Ready.
+2. Start background `kubectl port-forward` processes for `postgres` (5432) and `mock-api` (8080).
+In `AfterSuite`:
+1. Terminate all background port-forward processes.
+2. Cleanup test namespaces.
 
 - [ ] **Step 3: Commit**
 `git add test/utils/utils.go test/integration && git commit -m "test: bootstrap integration test suite"`

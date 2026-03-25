@@ -42,7 +42,7 @@ mockApi:
 ```
 
 - [ ] **Step 3: Create Postgres templates**
-Create a Deployment and Service named `postgres`. Mount the `init.sql` from a ConfigMap to `/docker-entrypoint-initdb.d`.
+Create a Deployment and Service named `postgres`. Also create a ConfigMap named `postgres-init` containing the `init.sql` script (from `test/local/testdata/postgres/init.sql`), and mount it to `/docker-entrypoint-initdb.d`.
 
 - [ ] **Step 4: Create Mock API templates**
 Create a Deployment and Service named `mock-api` using the `parallax-test-api` image.
@@ -61,10 +61,14 @@ Create secrets for database and API authentication as used in the examples.
 - Modify: `Makefile`
 
 - [ ] **Step 1: Create `scripts/test-integration.sh`**
-Implement the cluster lifecycle: `kind create` -> `kind load` -> `helm install` -> `go test`. Use a `trap` to ensure cluster deletion.
+Implement the cluster lifecycle: 
+1. Build Operator image (`parallax:integration`).
+2. Build Mock API image (`parallax-test-api:integration`) from `test/local/testdata/api-server/`.
+3. `kind create` -> `kind load` -> `helm install` -> `go test`. 
+Use a `trap` to ensure cluster deletion.
 
 - [ ] **Step 2: Add `test-integration` to `Makefile`**
-Add the target and ensure it depends on `docker-build`.
+Add the target. Ensure it handles triggering the build of both the operator and mock API images (e.g., by depending on docker-build and a new mock-api-build target) before calling the script.
 
 - [ ] **Step 3: Commit**
 `git add scripts/test-integration.sh Makefile && git commit -m "test: add integration test orchestration"`

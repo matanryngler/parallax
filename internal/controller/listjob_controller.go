@@ -214,6 +214,7 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: listJob.Spec.Template.ServiceAccountName,
+		SecurityContext:    listJob.Spec.Template.SecurityContext,
 		ImagePullSecrets:   listJob.Spec.Template.ImagePullSecrets,
 		Tolerations:        listJob.Spec.Template.Tolerations,
 		Affinity:           listJob.Spec.Template.Affinity,
@@ -255,7 +256,7 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			Name:      listJob.Name,
 			Namespace: req.Namespace,
 			Labels: map[string]string{
-				"listjob": listJob.Name,
+				"listjob.batchops.io/name": listJob.Name,
 			},
 		},
 		Spec: jobSpec,

@@ -43,11 +43,10 @@ type JobTemplateSpec struct {
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// ServiceAccountName is the name of the ServiceAccount to use for the pod.
-	// Use for RBAC and workload identity.
-	// If not specified, uses the default ServiceAccount.
+	// SecurityContext defines the security settings for the pod.
+	// Includes runAsUser, runAsGroup, fsGroup, etc.
 	// +optional
-	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+	SecurityContext *corev1.PodSecurityContext `json:"securityContext,omitempty"`
 
 	// ImagePullPolicy specifies when to pull the container image.
 	// Valid values: Always, Never, IfNotPresent.

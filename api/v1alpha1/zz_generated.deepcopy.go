@@ -97,6 +97,11 @@ func (in *JobTemplateSpec) DeepCopyInto(out *JobTemplateSpec) {
 		}
 	}
 	in.Resources.DeepCopyInto(&out.Resources)
+	if in.SecurityContext != nil {
+		in, out := &in.SecurityContext, &out.SecurityContext
+		*out = new(corev1.PodSecurityContext)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.ImagePullSecrets != nil {
 		in, out := &in.ImagePullSecrets, &out.ImagePullSecrets
 		*out = make([]corev1.LocalObjectReference, len(*in))

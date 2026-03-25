@@ -316,7 +316,7 @@ docker-build: ## Build docker image with the manager.
 
 .PHONY: mock-api-build
 mock-api-build: ## Build the mock API image for integration tests.
-	$(CONTAINER_TOOL) build -t parallax-test-api:integration test/local/testdata/api-server/
+	$(CONTAINER_TOOL) build -t parallax-test-api:integration test/integration/testdata/api-server/
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

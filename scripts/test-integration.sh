@@ -31,7 +31,7 @@ docker build -t parallax:integration .
 
 # 2. Build Mock API image
 echo "📦 Building Mock API image..."
-docker build -t parallax-test-api:integration test/local/testdata/api-server/
+docker build -t parallax-test-api:integration test/integration/testdata/api-server/
 
 # 3. Create Kind cluster
 echo "🔧 Creating Kind cluster: ${CLUSTER_NAME}"
@@ -60,7 +60,7 @@ helm install parallax ./charts/parallax \
 
 # 8. Create ConfigMap for Postgres Init
 echo "💾 Creating postgres-init ConfigMap..."
-kubectl create configmap postgres-init --from-file=01-init.sql=test/local/testdata/postgres/init.sql
+kubectl create configmap postgres-init --from-file=01-init.sql=test/integration/testdata/postgres/init.sql
 
 # 9. Install Test Infrastructure
 echo "🧪 Installing Test Infrastructure..."

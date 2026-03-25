@@ -56,6 +56,13 @@ spec:
 
     serviceAccountName: parallax-job-runner
 
+    # Security settings for the pod
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 3000
+      fsGroup: 2000
+      runAsNonRoot: true
+
     # Volume mounts for writable directories  
     # Required when using readOnlyRootFilesystem
     volumes:

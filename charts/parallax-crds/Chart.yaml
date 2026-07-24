@@ -2,8 +2,8 @@ apiVersion: v2
 name: parallax-crds
 description: Parallax Custom Resource Definitions (CRDs)
 type: application
-version: 0.1.7
-appVersion: "0.1.7"
+version: 0.1.8
+appVersion: "0.1.8"
 home: https://github.com/matanryngler/parallax
 sources:
   - https://github.com/matanryngler/parallax
@@ -17,4 +17,4 @@ keywords:
   - parallel
   - crds
 annotations:
-  category: Infrastructure 
+  category: Infrastructure

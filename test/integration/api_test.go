@@ -59,9 +59,8 @@ var _ = Describe("Scenario 02: API Integration", func() {
 			projectDir, _ := utils.GetProjectDir()
 			exampleDir := projectDir + "/examples/02-api-integration"
 
-			By("applying the ListSource (with patched URL)")
-			// Patch url: http://mock-api/ to url: http://mock-api.default.svc.cluster.local/
-			cmd := exec.Command("sh", "-c", fmt.Sprintf("sed 's|url: http://mock-api/|url: http://mock-api.default.svc.cluster.local/|' %s/listsource-api.yaml | kubectl apply -n %s -f -", exampleDir, namespace))
+			By("applying the ListSource")
+			cmd := exec.Command("kubectl", "apply", "-f", exampleDir+"/listsource-api.yaml", "-n", namespace)
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -72,7 +71,7 @@ var _ = Describe("Scenario 02: API Integration", func() {
 
 			By("waiting for the ListSource to be ready")
 			Eventually(func() string {
-				cmd := exec.Command("kubectl", "get", "listsource", "api-items", "-n", namespace, "-o", "jsonpath={.status.phase}")
+				cmd := exec.Command("kubectl", "get", "listsource", "api-items", "-n", namespace, "-o", "jsonpath={.status.state}")
 				output, _ := utils.Run(cmd)
 				return output
 			}, timeout, interval).Should(Equal("Ready"))
@@ -84,27 +83,26 @@ var _ = Describe("Scenario 02: API Integration", func() {
 				return output
 			}, timeout, interval).Should(Equal("5"))
 
-			By("waiting for the ListJob to complete")
+			By("waiting for the Job to complete")
 			Eventually(func() string {
-				cmd := exec.Command("kubectl", "get", "listjob", "api-processor", "-n", namespace, "-o", "jsonpath={.status.phase}")
+				cmd := exec.Command("kubectl", "get", "job", "api-processor", "-n", namespace, "-o", "jsonpath={.status.conditions[?(@.type==\"Complete\")].status}")
 				output, _ := utils.Run(cmd)
 				return output
-			}, timeout, interval).Should(Equal("Completed"))
+			}, timeout, interval).Should(Equal("True"))
 
-			By("verifying that 5 Jobs were created and succeeded")
-			cmd = exec.Command("kubectl", "get", "jobs", "-n", namespace, "-l", "listjob.batchops.io/name=api-processor", "--no-headers")
-			output, err = utils.Run(cmd)
+			By("verifying that the Job succeeded with 5 completions")
+			cmd = exec.Command("kubectl", "get", "job", "api-processor", "-n", namespace, "-o", "jsonpath={.status.succeeded}")
+			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
-			lines := utils.GetNonEmptyLines(output)
-			Expect(len(lines)).To(Equal(5))
+			Expect(output).To(Equal("5"))
 
-			By("verifying that each Job succeeded")
+			By("verifying that each Pod succeeded")
 			for i := 0; i < 5; i++ {
 				Eventually(func() string {
-					cmd := exec.Command("kubectl", "get", "jobs", "-n", namespace, "-l", "listjob.batchops.io/name=api-processor", fmt.Sprintf("-o=jsonpath={.items[%d].status.succeeded}", i))
+					cmd := exec.Command("kubectl", "get", "pods", "-n", namespace, "-l", "listjob.batchops.io/name=api-processor", fmt.Sprintf("-o=jsonpath={.items[%d].status.phase}", i))
 					output, _ := utils.Run(cmd)
 					return output
-				}, timeout, interval).Should(Equal("1"))
+				}, timeout, interval).Should(Equal("Succeeded"))
 			}
 		})
 	})

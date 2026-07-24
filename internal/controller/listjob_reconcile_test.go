@@ -51,6 +51,9 @@ func TestListJobReconcile_StaticList(t *testing.T) {
 				Image:   "alpine:3.19",
 				Command: []string{"echo", "test"},
 				EnvName: "ITEM",
+				Labels: map[string]string{
+					"app.kubernetes.io/component": "processor",
+				},
 			},
 		},
 	}
@@ -110,6 +113,10 @@ func TestListJobReconcile_StaticList(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, batchv1.IndexedCompletion, *job.Spec.CompletionMode)
 	assert.Equal(t, int32(3), *job.Spec.Completions)
+	assert.Equal(t, "test-listjob", job.Labels["listjob.batchops.io/name"])
+	assert.Equal(t, "test-listjob", job.Spec.Template.Labels["listjob.batchops.io/name"])
+	assert.Equal(t, "processor", job.Spec.Template.Labels["app.kubernetes.io/component"])
+	assert.Equal(t, []string{"sh", "-c", ". /shared/env.sh && exec \"$@\"", "--", "echo", "test"}, job.Spec.Template.Spec.Containers[0].Command)
 }
 
 func TestListJobReconcile_ListSourceRef(t *testing.T) {

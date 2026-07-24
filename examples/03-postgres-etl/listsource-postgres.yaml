@@ -9,24 +9,19 @@ spec:
   type: postgresql
 
   # PostgreSQL configuration
-  postgresql:
+  postgres:
     # Connection string using libpq format
     # Format: postgresql://username:password@host:port/database?options
     #
     # IMPORTANT: This is a test example with demo credentials.
     # For production, use Auth field with secrets instead of embedding credentials in URL.
     # See the README.md for instructions on using Auth with secretRef
-    connectionString: "postgresql://testuser:testpass@postgres:5432/testdb?sslmode=disable"
+    connectionString: "postgresql://postgres:postgres@postgres:5432/testdb?sslmode=disable"
 
     # SQL query to fetch items
     # This query selects pending orders
-    # Only the column specified in idColumn will be used as items
-    query: "SELECT order_id, customer FROM orders WHERE status = 'pending' ORDER BY created_at"
-
-    # Column name that contains the item IDs
-    # This must match a column in the SELECT statement
-    # The values from this column become the items to process
-    idColumn: order_id
+    # Only one column should be selected as it will be used as the item list
+    query: "SELECT order_id FROM orders WHERE status = 'pending' ORDER BY created_at"
 
   # Refresh interval in seconds
   # The database will be queried every 60 seconds to fetch new pending orders

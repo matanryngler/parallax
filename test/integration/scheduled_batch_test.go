@@ -55,7 +55,7 @@ var _ = Describe("Scenario 04: Scheduled Batch", func() {
 	})
 
 	Context("with a scheduled batch (ListCronJob)", func() {
-		It("should create ListJobs based on the schedule", func() {
+		It("should create Kubernetes CronJobs and Jobs based on the schedule", func() {
 			projectDir, _ := utils.GetProjectDir()
 			exampleDir := projectDir + "/examples/04-scheduled-batch"
 
@@ -70,36 +70,32 @@ var _ = Describe("Scenario 04: Scheduled Batch", func() {
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("waiting for the ListCronJob to be active")
+			By("waiting for the Kubernetes CronJob to be created")
 			Eventually(func() string {
-				cmd := exec.Command("kubectl", "get", "listcronjob", "report-generator", "-n", namespace, "-o", "jsonpath={.status.lastScheduleTime}")
+				cmd := exec.Command("kubectl", "get", "cronjob", "report-generator", "-n", namespace, "--no-headers")
 				output, _ := utils.Run(cmd)
 				return output
 			}, timeout, interval).ShouldNot(BeEmpty())
 
-			By("verifying that a ListJob was created")
+			By("waiting for a Job to be triggered by the schedule")
 			Eventually(func() string {
-				cmd := exec.Command("kubectl", "get", "listjobs", "-n", namespace, "-l", "listcronjob.batchops.io/name=report-generator", "--no-headers")
+				cmd := exec.Command("kubectl", "get", "jobs", "-n", namespace, "-l", "listcronjob.batchops.io/name=report-generator", "--no-headers")
 				output, _ := utils.Run(cmd)
 				return output
 			}, timeout, interval).ShouldNot(BeEmpty())
 
-			By("waiting for at least one ListJob to complete")
+			By("waiting for the Job to complete")
 			Eventually(func() string {
-				cmd := exec.Command("kubectl", "get", "listjobs", "-n", namespace, "-l", "listcronjob.batchops.io/name=report-generator", "-o", "jsonpath={.items[0].status.phase}")
+				cmd := exec.Command("kubectl", "get", "jobs", "-n", namespace, "-l", "listcronjob.batchops.io/name=report-generator", "-o", "jsonpath={.items[0].status.conditions[?(@.type==\"Complete\")].status}")
 				output, _ := utils.Run(cmd)
 				return output
-			}, timeout, interval).Should(Equal("Completed"))
+			}, timeout, interval).Should(Equal("True"))
 
-			By("verifying that Jobs were created for the items")
-			cmd = exec.Command("kubectl", "get", "listjobs", "-n", namespace, "-l", "listcronjob.batchops.io/name=report-generator", "-o", "jsonpath={.items[0].metadata.name}")
-			listJobName, _ := utils.Run(cmd)
-			
-			cmd = exec.Command("kubectl", "get", "jobs", "-n", namespace, "-l", "listjob.batchops.io/name="+listJobName, "--no-headers")
-			output, err = utils.Run(cmd)
+			By("verifying that the Job had 5 completions (indexed)")
+			cmd = exec.Command("kubectl", "get", "jobs", "-n", namespace, "-l", "listcronjob.batchops.io/name=report-generator", "-o", "jsonpath={.items[0].status.succeeded}")
+			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
-			lines := utils.GetNonEmptyLines(output)
-			Expect(len(lines)).To(Equal(5))
+			Expect(output).To(Equal("5"))
 		})
 	})
 })

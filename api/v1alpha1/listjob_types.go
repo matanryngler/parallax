@@ -43,6 +43,12 @@ type JobTemplateSpec struct {
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
+	// ServiceAccountName is the name of the ServiceAccount to use for the pod.
+	// Controls the permissions available to the job pods.
+	// Default: "default" if not specified.
+	// +optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+
 	// SecurityContext defines the security settings for the pod.
 	// Includes runAsUser, runAsGroup, fsGroup, etc.
 	// +optional

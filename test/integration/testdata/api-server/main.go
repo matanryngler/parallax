@@ -28,6 +28,7 @@ var testUsers = []User{
 }
 
 func main() {
+	http.HandleFunc("/", exampleItemsHandler)
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/simple-array", simpleArrayHandler)
 	http.HandleFunc("/complex-json", complexJSONHandler)
@@ -39,6 +40,7 @@ func main() {
 
 	log.Println("🚀 API test server starting on :8080")
 	log.Println("📋 Available endpoints:")
+	log.Println("  GET / - Example API integration payload")
 	log.Println("  GET /health - Health check")
 	log.Println("  GET /simple-array - Simple JSON array")
 	log.Println("  GET /complex-json - Complex nested JSON")
@@ -51,6 +53,20 @@ func main() {
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatal("Server failed to start:", err)
 	}
+}
+
+func exampleItemsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"status": "success",
+		"items": []map[string]string{
+			{"id": "task-001", "priority": "high"},
+			{"id": "task-002", "priority": "medium"},
+			{"id": "task-003", "priority": "low"},
+			{"id": "task-004", "priority": "medium"},
+			{"id": "task-005", "priority": "high"},
+		},
+	})
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

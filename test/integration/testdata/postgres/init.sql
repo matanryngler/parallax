@@ -42,3 +42,21 @@ SELECT t.id, t.title, u.name as assignee
 FROM tasks t 
 JOIN users u ON t.user_id = u.id 
 WHERE t.priority >= 2 AND t.status != 'completed';
+
+-- Orders table for Scenario 03: Postgres ETL
+CREATE TABLE orders (
+    order_id VARCHAR(50) PRIMARY KEY,
+    customer VARCHAR(100) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert test data for Scenario 03
+INSERT INTO orders (order_id, customer, status) VALUES
+    ('ORD-001', 'Alice Johnson', 'pending'),
+    ('ORD-002', 'Bob Smith', 'pending'),
+    ('ORD-003', 'Charlie Brown', 'pending'),
+    ('ORD-004', 'Diana Prince', 'pending'),
+    ('ORD-005', 'Eve Adams', 'pending'),
+    ('ORD-006', 'Frank Miller', 'completed'),
+    ('ORD-007', 'Grace Lee', 'completed');

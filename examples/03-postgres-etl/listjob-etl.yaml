@@ -28,8 +28,10 @@ spec:
 
         # Step 1: Fetch order details from database
         echo "Step 1: Fetching order details..."
-        ORDER_DATA=$(PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -t -c \
-          "SELECT customer, status FROM orders WHERE order_id = $ORDER_ID")
+        # Escape the item before including it in the SQL literal.
+        ORDER_ID_SQL=$(printf '%s' "$ORDER_ID" | sed "s/'/''/g")
+        ORDER_DATA=$(PGPASSWORD=$DB_PASSWORD psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -c \
+          "SELECT customer, status FROM orders WHERE order_id = '$ORDER_ID_SQL'")
 
         if [ -z "$ORDER_DATA" ]; then
           echo "Error: Order $ORDER_ID not found"
@@ -44,12 +46,12 @@ spec:
 
         # Step 3: Update order status in database
         echo "Step 3: Updating order status..."
-        PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c \
-          "UPDATE orders SET status = 'processed' WHERE order_id = $ORDER_ID"
+        PGPASSWORD=$DB_PASSWORD psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c \
+          "UPDATE orders SET status = 'processed' WHERE order_id = '$ORDER_ID_SQL'"
 
         # Step 4: Verify update
-        NEW_STATUS=$(PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -t -c \
-          "SELECT status FROM orders WHERE order_id = $ORDER_ID")
+        NEW_STATUS=$(PGPASSWORD=$DB_PASSWORD psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -c \
+          "SELECT status FROM orders WHERE order_id = '$ORDER_ID_SQL'")
 
         echo "New status: $NEW_STATUS"
 

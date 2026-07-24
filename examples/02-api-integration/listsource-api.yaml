@@ -13,7 +13,7 @@ spec:
     # URL of the API endpoint
     # Using the mock server service: http://mock-api.default.svc.cluster.local
     # For external APIs, use: https://api.example.com/v1/items
-    url: http://mock-api/
+    url: http://mock-api.default.svc.cluster.local/
 
     # Optional: Add headers (for authentication, content-type, etc.)
     headers:

@@ -71,32 +71,31 @@ var _ = Describe("Scenario 01: Static List", func() {
 
 			By("waiting for the ListSource to be ready")
 			Eventually(func() string {
-				cmd := exec.Command("kubectl", "get", "listsource", "basic-list", "-n", namespace, "-o", "jsonpath={.status.phase}")
+				cmd := exec.Command("kubectl", "get", "listsource", "basic-list", "-n", namespace, "-o", "jsonpath={.status.state}")
 				output, _ := utils.Run(cmd)
 				return output
 			}, timeout, interval).Should(Equal("Ready"))
 
-			By("waiting for the ListJob to complete")
+			By("waiting for the Job to complete")
 			Eventually(func() string {
-				cmd := exec.Command("kubectl", "get", "listjob", "basic-processor", "-n", namespace, "-o", "jsonpath={.status.phase}")
+				cmd := exec.Command("kubectl", "get", "job", "basic-processor", "-n", namespace, "-o", "jsonpath={.status.conditions[?(@.type==\"Complete\")].status}")
 				output, _ := utils.Run(cmd)
 				return output
-			}, timeout, interval).Should(Equal("Completed"))
+			}, timeout, interval).Should(Equal("True"))
 
-			By("verifying that 3 Jobs were created and succeeded")
-			cmd = exec.Command("kubectl", "get", "jobs", "-n", namespace, "-l", "listjob.batchops.io/name=basic-processor", "--no-headers")
+			By("verifying that the Job succeeded with 3 completions")
+			cmd = exec.Command("kubectl", "get", "job", "basic-processor", "-n", namespace, "-o", "jsonpath={.status.succeeded}")
 			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
-			lines := utils.GetNonEmptyLines(output)
-			Expect(len(lines)).To(Equal(3))
+			Expect(output).To(Equal("3"))
 
-			By("verifying that each Job succeeded")
+			By("verifying that each Pod succeeded")
 			for i := 0; i < 3; i++ {
 				Eventually(func() string {
-					cmd := exec.Command("kubectl", "get", "jobs", "-n", namespace, "-l", "listjob.batchops.io/name=basic-processor", fmt.Sprintf("-o=jsonpath={.items[%d].status.succeeded}", i))
+					cmd := exec.Command("kubectl", "get", "pods", "-n", namespace, "-l", "listjob.batchops.io/name=basic-processor", fmt.Sprintf("-o=jsonpath={.items[%d].status.phase}", i))
 					output, _ := utils.Run(cmd)
 					return output
-				}, timeout, interval).Should(Equal("1"))
+				}, timeout, interval).Should(Equal("Succeeded"))
 			}
 		})
 	})

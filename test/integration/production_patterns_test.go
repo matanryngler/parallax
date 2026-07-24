@@ -18,6 +18,7 @@ package integration
 
 import (
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"time"
 
@@ -62,13 +63,6 @@ var _ = Describe("Scenario 05: Production Patterns", func() {
 
 			By("creating a dummy ListSource for the reference")
 			// Scenario 05 refers to 'production-data'
-			cmd := exec.Command("kubectl", "apply", "-f", "-", "-n", namespace)
-			cmd.Stdin = corev1.ConfigMap{
-				TypeMeta:   struct{ Kind, APIVersion string }{Kind: "ConfigMap", APIVersion: "v1"},
-				ObjectMeta: struct{ Name, Namespace string }{Name: "production-data", Namespace: namespace},
-				Data:       map[string]string{"items": "item1\nitem2"},
-			}.String() // Note: This is a simplification, we'll just use a manual yaml for speed
-			
 			rawCM := `
 apiVersion: v1
 kind: ConfigMap
@@ -77,13 +71,44 @@ metadata:
 data:
   items: "item-1\nitem-2"
 `
-			cmd = exec.Command("kubectl", "apply", "-f", "-", "-n", namespace)
-			cmd.Stdin = (interface{})(nil) // Reset
-			utils.Run(exec.Command("sh", "-c", fmt.Sprintf("echo '%s' | kubectl apply -f - -n %s", rawCM, namespace)))
+			cmd := exec.Command("sh", "-c", fmt.Sprintf("echo '%s' | kubectl apply -f - -n %s", rawCM, namespace))
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("creating the required ServiceAccount")
+			rawSA := `
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: parallax-job-runner
+`
+			cmd = exec.Command("sh", "-c", fmt.Sprintf("echo '%s' | kubectl apply -f - -n %s", rawSA, namespace))
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("creating the Secrets referenced by the production template")
+			rawSecrets := `
+apiVersion: v1
+kind: Secret
+metadata:
+  name: api-credentials
+stringData:
+  token: test-token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-credentials
+stringData:
+  password: test-password
+`
+			cmd = exec.Command("sh", "-c", fmt.Sprintf("echo '%s' | kubectl apply -f - -n %s", rawSecrets, namespace))
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
 
 			By("applying the ListJob with security and resources")
-			cmd = exec.Command("kubectl", "apply", "-f", exampleDir+"/security-context.yaml", "-n", namespace)
-			_, err := utils.Run(cmd)
+			cmd = exec.Command("sh", "-c", fmt.Sprintf("sed -e '/namespace: production/d' -e 's|image: your-registry/processor:v1.2.3|image: busybox:1.36|' %s/security-context.yaml | kubectl apply -n %s -f -", exampleDir, namespace))
+			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("waiting for the Job to be created")
@@ -97,18 +122,18 @@ data:
 			Eventually(func() bool {
 				cmd := exec.Command("kubectl", "get", "pods", "-n", namespace, "-l", "listjob.batchops.io/name=secure-processor", "-o", "json")
 				output, _ := utils.Run(cmd)
-				
+
 				var podList corev1.PodList
 				if err := json.Unmarshal([]byte(output), &podList); err != nil || len(podList.Items) == 0 {
 					return false
 				}
-				
+
 				pod := podList.Items[0]
 				sc := pod.Spec.SecurityContext
 				if sc == nil {
 					return false
 				}
-				
+
 				return *sc.RunAsUser == 1000 && *sc.RunAsGroup == 3000 && *sc.FSGroup == 2000 && *sc.RunAsNonRoot == true
 			}, timeout, interval).Should(BeTrue())
 
@@ -116,18 +141,31 @@ data:
 			Eventually(func() bool {
 				cmd := exec.Command("kubectl", "get", "pods", "-n", namespace, "-l", "listjob.batchops.io/name=secure-processor", "-o", "json")
 				output, _ := utils.Run(cmd)
-				
+
 				var podList corev1.PodList
 				if err := json.Unmarshal([]byte(output), &podList); err != nil || len(podList.Items) == 0 {
 					return false
 				}
-				
-				container := podList.Items[0].Spec.Containers[0]
+
+				// Find main container
+				var container corev1.Container
+				found := false
+				for _, c := range podList.Items[0].Spec.Containers {
+					if c.Name == "main" {
+						container = c
+						found = true
+						break
+					}
+				}
+				if !found {
+					return false
+				}
+
 				limits := container.Resources.Limits
 				requests := container.Resources.Requests
-				
-				return limits.Cpu().String() == "2" && limits.Memory().String() == "512Mi" &&
-					requests.Cpu().String() == "500m" && requests.Memory().String() == "256Mi"
+
+				return (limits.Cpu().MilliValue() == 2000) && limits.Memory().String() == "512Mi" &&
+					(requests.Cpu().MilliValue() == 500) && requests.Memory().String() == "256Mi"
 			}, timeout, interval).Should(BeTrue())
 
 			By("verifying the service account name")

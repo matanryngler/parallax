@@ -39,8 +39,8 @@ func TestIntegration(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	By("waiting for parallax-controller-manager to be ready")
-	err := utils.WaitForDeployment("parallax-controller-manager", "parallax-system", 300)
+	By("waiting for parallax deployment to be ready")
+	err := utils.WaitForDeployment("parallax", "parallax-system", 300)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("waiting for postgres to be ready")

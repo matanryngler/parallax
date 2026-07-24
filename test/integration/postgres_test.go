@@ -60,20 +60,20 @@ var _ = Describe("Scenario 03: Postgres ETL", func() {
 			exampleDir := projectDir + "/examples/03-postgres-etl"
 
 			By("applying the ListSource (with patched connectionString)")
-			// Patch connectionString: postgresql://postgres:postgres@postgres:5432/testdb?sslmode=disable 
+			// Patch connectionString: postgresql://postgres:postgres@postgres:5432/testdb?sslmode=disable
 			// to connectionString: postgresql://postgres:postgres@postgres.default.svc.cluster.local:5432/testdb?sslmode=disable
 			cmd := exec.Command("sh", "-c", fmt.Sprintf("sed 's|@postgres:5432|@postgres.default.svc.cluster.local:5432|' %s/listsource-postgres.yaml | kubectl apply -n %s -f -", exampleDir, namespace))
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("applying the ListJob")
-			cmd = exec.Command("kubectl", "apply", "-f", exampleDir+"/listjob-etl.yaml", "-n", namespace)
+			By("applying the ListJob with the test infrastructure database host")
+			cmd = exec.Command("sh", "-c", fmt.Sprintf("sed '/name: DB_HOST/{n; s|value: \"postgres\"|value: \"postgres.default.svc.cluster.local\"|;}' %s/listjob-etl.yaml | kubectl apply -n %s -f -", exampleDir, namespace))
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("waiting for the ListSource to be ready")
 			Eventually(func() string {
-				cmd := exec.Command("kubectl", "get", "listsource", "postgres-orders", "-n", namespace, "-o", "jsonpath={.status.phase}")
+				cmd := exec.Command("kubectl", "get", "listsource", "postgres-orders", "-n", namespace, "-o", "jsonpath={.status.state}")
 				output, _ := utils.Run(cmd)
 				return output
 			}, timeout, interval).Should(Equal("Ready"))
@@ -85,27 +85,26 @@ var _ = Describe("Scenario 03: Postgres ETL", func() {
 				return output
 			}, timeout, interval).Should(Equal("5"))
 
-			By("waiting for the ListJob to complete")
+			By("waiting for the Job to complete")
 			Eventually(func() string {
-				cmd := exec.Command("kubectl", "get", "listjob", "postgres-processor", "-n", namespace, "-o", "jsonpath={.status.phase}")
+				cmd := exec.Command("kubectl", "get", "job", "order-processor", "-n", namespace, "-o", "jsonpath={.status.conditions[?(@.type==\"Complete\")].status}")
 				output, _ := utils.Run(cmd)
 				return output
-			}, timeout, interval).Should(Equal("Completed"))
+			}, timeout, interval).Should(Equal("True"))
 
-			By("verifying that 5 Jobs were created and succeeded")
-			cmd = exec.Command("kubectl", "get", "jobs", "-n", namespace, "-l", "listjob.batchops.io/name=postgres-processor", "--no-headers")
-			output, err = utils.Run(cmd)
+			By("verifying that the Job succeeded with 5 completions")
+			cmd = exec.Command("kubectl", "get", "job", "order-processor", "-n", namespace, "-o", "jsonpath={.status.succeeded}")
+			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
-			lines := utils.GetNonEmptyLines(output)
-			Expect(len(lines)).To(Equal(5))
+			Expect(output).To(Equal("5"))
 
-			By("verifying that each Job succeeded")
+			By("verifying that each Pod succeeded")
 			for i := 0; i < 5; i++ {
 				Eventually(func() string {
-					cmd := exec.Command("kubectl", "get", "jobs", "-n", namespace, "-l", "listjob.batchops.io/name=postgres-processor", fmt.Sprintf("-o=jsonpath={.items[%d].status.succeeded}", i))
+					cmd := exec.Command("kubectl", "get", "pods", "-n", namespace, "-l", "listjob.batchops.io/name=order-processor", fmt.Sprintf("-o=jsonpath={.items[%d].status.phase}", i))
 					output, _ := utils.Run(cmd)
 					return output
-				}, timeout, interval).Should(Equal("1"))
+				}, timeout, interval).Should(Equal("Succeeded"))
 			}
 		})
 	})

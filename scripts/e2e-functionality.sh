@@ -60,29 +60,8 @@ check_prerequisites() {
 build_and_load_operator() {
     log "Building and loading operator image..."
     
-    log "Building operator image with local caching: $OPERATOR_IMAGE"
-    
-    # Use Docker buildx for better local caching
-    if command -v docker >/dev/null 2>&1 && docker buildx version >/dev/null 2>&1; then
-        log "Using Docker buildx with local caching..."
-        docker buildx build \
-            --platform linux/amd64 \
-            --load \
-            --tag "$OPERATOR_IMAGE" \
-            --cache-from type=local,src=/tmp/.buildx-cache \
-            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
-            --build-arg VERSION=e2e-test \
-            --build-arg COMMIT=$(git rev-parse HEAD) \
-            --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-            .
-        
-        # Move cache to avoid growing cache indefinitely
-        rm -rf /tmp/.buildx-cache
-        mv /tmp/.buildx-cache-new /tmp/.buildx-cache 2>/dev/null || true
-    else
-        log "Docker buildx not available, falling back to regular build..."
-        make docker-build IMG="$OPERATOR_IMAGE"
-    fi
+    log "Building operator image: $OPERATOR_IMAGE"
+    make docker-build IMG="$OPERATOR_IMAGE"
     
     log "Loading image into Kind cluster..."
     kind load docker-image "$OPERATOR_IMAGE" --name parallax-e2e-test
@@ -293,18 +272,18 @@ EOF
     log "Waiting for Kubernetes CronJob to be created..."
     sleep 15
     
-    if kubectl get cronjob -l listcronjob=test-scheduled -n "$TEST_NAMESPACE" >/dev/null 2>&1; then
+    if kubectl get cronjob -l listcronjob.batchops.io/name=test-scheduled -n "$TEST_NAMESPACE" >/dev/null 2>&1; then
         success "ListCronJob created Kubernetes CronJob successfully"
         
         # Verify CronJob configuration
-        SCHEDULE=$(kubectl get cronjob -l listcronjob=test-scheduled -n "$TEST_NAMESPACE" -o jsonpath='{.items[0].spec.schedule}')
+        SCHEDULE=$(kubectl get cronjob -l listcronjob.batchops.io/name=test-scheduled -n "$TEST_NAMESPACE" -o jsonpath='{.items[0].spec.schedule}')
         if [[ "$SCHEDULE" == "0 */1 * * *" ]]; then
             success "CronJob schedule correctly set"
         else
             warn "CronJob schedule is '$SCHEDULE', expected '0 */1 * * *'"
         fi
         
-        SUCCESS_LIMIT=$(kubectl get cronjob -l listcronjob=test-scheduled -n "$TEST_NAMESPACE" -o jsonpath='{.items[0].spec.successfulJobsHistoryLimit}')
+        SUCCESS_LIMIT=$(kubectl get cronjob -l listcronjob.batchops.io/name=test-scheduled -n "$TEST_NAMESPACE" -o jsonpath='{.items[0].spec.successfulJobsHistoryLimit}')
         if [[ "$SUCCESS_LIMIT" == "2" ]]; then
             success "CronJob success history limit correctly set"
         else

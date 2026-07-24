@@ -212,6 +212,8 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		Resources: listJob.Spec.Template.InitResources,
 	})
 
+	mainCommand := append([]string{"sh", "-c", ". /shared/env.sh && exec \"$@\"", "--"}, listJob.Spec.Template.Command...)
+
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: listJob.Spec.Template.ServiceAccountName,
 		SecurityContext:    listJob.Spec.Template.SecurityContext,
@@ -225,7 +227,7 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				Name:            "main",
 				Image:           listJob.Spec.Template.Image,
 				ImagePullPolicy: listJob.Spec.Template.ImagePullPolicy,
-				Command:         []string{"sh", "-c", ". /shared/env.sh && " + strings.Join(listJob.Spec.Template.Command, " ")},
+				Command:         mainCommand,
 				Resources:       listJob.Spec.Template.Resources,
 				Env:             listJob.Spec.Template.Env,
 				EnvFrom:         listJob.Spec.Template.EnvFrom,
@@ -236,6 +238,14 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		RestartPolicy: corev1.RestartPolicyNever,
 	}
 
+	// Merge the user-supplied labels with the controller label so that both the
+	// Job and the Pods it creates can be selected by their originating ListJob.
+	podLabels := make(map[string]string, len(listJob.Spec.Template.Labels)+1)
+	for k, v := range listJob.Spec.Template.Labels {
+		podLabels[k] = v
+	}
+	podLabels["listjob.batchops.io/name"] = listJob.Name
+
 	jobSpec := batchv1.JobSpec{
 		Parallelism:             &listJob.Spec.Parallelism,
 		Completions:             &[]int32{int32(len(list))}[0],
@@ -245,7 +255,7 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ActiveDeadlineSeconds:   listJob.Spec.ActiveDeadlineSeconds,
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: listJob.Spec.Template.Labels,
+				Labels: podLabels,
 			},
 			Spec: podSpec,
 		},

@@ -326,7 +326,9 @@ func GetProjectDir() (string, error) {
 	if err != nil {
 		return wd, err
 	}
+	// Remove common test directory suffixes to get to project root
 	wd = strings.Replace(wd, "/test/e2e", "", -1)
+	wd = strings.Replace(wd, "/test/integration", "", -1)
 	return wd, nil
 }
 

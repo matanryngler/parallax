@@ -28,6 +28,11 @@ spec:
                   key: database
           ports:
             - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
           volumeMounts:
             - name: init-db
               mountPath: /docker-entrypoint-initdb.d/

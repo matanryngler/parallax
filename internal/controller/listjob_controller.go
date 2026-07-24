@@ -238,13 +238,15 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		RestartPolicy: corev1.RestartPolicyNever,
 	}
 
-	// Merge the user-supplied labels with the controller label so that both the
+	// Merge the user-supplied labels with controller labels so that both the
 	// Job and the Pods it creates can be selected by their originating ListJob.
-	podLabels := make(map[string]string, len(listJob.Spec.Template.Labels)+1)
+	// Keep the original short label for backwards-compatible selectors.
+	podLabels := make(map[string]string, len(listJob.Spec.Template.Labels)+2)
 	for k, v := range listJob.Spec.Template.Labels {
 		podLabels[k] = v
 	}
 	podLabels["listjob.batchops.io/name"] = listJob.Name
+	podLabels["listjob"] = listJob.Name
 
 	jobSpec := batchv1.JobSpec{
 		Parallelism:             &listJob.Spec.Parallelism,
@@ -267,6 +269,7 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			Namespace: req.Namespace,
 			Labels: map[string]string{
 				"listjob.batchops.io/name": listJob.Name,
+				"listjob":                  listJob.Name,
 			},
 		},
 		Spec: jobSpec,
@@ -279,6 +282,23 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if !apierrors.IsAlreadyExists(err) {
 			log.Error(err, "Failed to create Job")
 			return ctrl.Result{}, err
+		}
+
+		// Existing Jobs are immutable except for metadata. Add the legacy label so
+		// selectors continue to work across the label-key migration.
+		existingJob := &batchv1.Job{}
+		if err := r.Get(ctx, client.ObjectKey{Name: listJob.Name, Namespace: req.Namespace}, existingJob); err != nil {
+			return ctrl.Result{}, err
+		}
+		if existingJob.Labels == nil {
+			existingJob.Labels = map[string]string{}
+		}
+		if existingJob.Labels["listjob"] != listJob.Name || existingJob.Labels["listjob.batchops.io/name"] != listJob.Name {
+			existingJob.Labels["listjob"] = listJob.Name
+			existingJob.Labels["listjob.batchops.io/name"] = listJob.Name
+			if err := r.Update(ctx, existingJob); err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 	}
 

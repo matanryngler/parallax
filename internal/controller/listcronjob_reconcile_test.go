@@ -111,6 +111,10 @@ func TestListCronJobReconcile_StaticList(t *testing.T) {
 	assert.Equal(t, "*/5 * * * *", cronJob.Spec.Schedule)
 	assert.Equal(t, batchv1.IndexedCompletion, *cronJob.Spec.JobTemplate.Spec.CompletionMode)
 	assert.Equal(t, int32(3), *cronJob.Spec.JobTemplate.Spec.Completions)
+	assert.Equal(t, "test-listcronjob", cronJob.Labels["listcronjob.batchops.io/name"])
+	assert.Equal(t, "test-listcronjob", cronJob.Labels["listcronjob"])
+	assert.Equal(t, "test-listcronjob", cronJob.Spec.JobTemplate.Spec.Template.Labels["listcronjob.batchops.io/name"])
+	assert.Equal(t, "test-listcronjob", cronJob.Spec.JobTemplate.Spec.Template.Labels["listcronjob"])
 }
 
 func TestListCronJobReconcile_ListSourceRef(t *testing.T) {

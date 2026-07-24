@@ -272,18 +272,19 @@ EOF
     log "Waiting for Kubernetes CronJob to be created..."
     sleep 15
     
-    if kubectl get cronjob -l listcronjob.batchops.io/name=test-scheduled -n "$TEST_NAMESPACE" >/dev/null 2>&1; then
+    CRONJOB_NAME=$(kubectl get cronjob -l listcronjob.batchops.io/name=test-scheduled -n "$TEST_NAMESPACE" -o jsonpath='{.items[0].metadata.name}')
+    if [[ -n "$CRONJOB_NAME" ]]; then
         success "ListCronJob created Kubernetes CronJob successfully"
         
         # Verify CronJob configuration
-        SCHEDULE=$(kubectl get cronjob -l listcronjob.batchops.io/name=test-scheduled -n "$TEST_NAMESPACE" -o jsonpath='{.items[0].spec.schedule}')
+        SCHEDULE=$(kubectl get cronjob "$CRONJOB_NAME" -n "$TEST_NAMESPACE" -o jsonpath='{.spec.schedule}')
         if [[ "$SCHEDULE" == "0 */1 * * *" ]]; then
             success "CronJob schedule correctly set"
         else
             warn "CronJob schedule is '$SCHEDULE', expected '0 */1 * * *'"
         fi
         
-        SUCCESS_LIMIT=$(kubectl get cronjob -l listcronjob.batchops.io/name=test-scheduled -n "$TEST_NAMESPACE" -o jsonpath='{.items[0].spec.successfulJobsHistoryLimit}')
+        SUCCESS_LIMIT=$(kubectl get cronjob "$CRONJOB_NAME" -n "$TEST_NAMESPACE" -o jsonpath='{.spec.successfulJobsHistoryLimit}')
         if [[ "$SUCCESS_LIMIT" == "2" ]]; then
             success "CronJob success history limit correctly set"
         else

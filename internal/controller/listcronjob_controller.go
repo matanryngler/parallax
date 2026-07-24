@@ -284,12 +284,14 @@ func (r *ListCronJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		RestartPolicy: corev1.RestartPolicyNever,
 	}
 
-	// Merge labels for the Job pods
-	podLabels := make(map[string]string)
+	// Merge labels for the Job pods. Keep the original short label for
+	// backwards-compatible selectors.
+	podLabels := make(map[string]string, len(listCronJob.Spec.Template.Labels)+2)
 	for k, v := range listCronJob.Spec.Template.Labels {
 		podLabels[k] = v
 	}
 	podLabels["listcronjob.batchops.io/name"] = listCronJob.Name
+	podLabels["listcronjob"] = listCronJob.Name
 
 	jobSpec := batchv1.JobSpec{
 		Parallelism:             &listCronJob.Spec.Parallelism,
@@ -313,6 +315,7 @@ func (r *ListCronJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			Namespace: req.Namespace,
 			Labels: map[string]string{
 				"listcronjob.batchops.io/name": listCronJob.Name,
+				"listcronjob":                  listCronJob.Name,
 			},
 		},
 		Spec: batchv1.CronJobSpec{
@@ -354,6 +357,11 @@ func (r *ListCronJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	} else {
 		// Update existing CronJob
 		existingCronJob.Spec = cronJob.Spec
+		if existingCronJob.Labels == nil {
+			existingCronJob.Labels = map[string]string{}
+		}
+		existingCronJob.Labels["listcronjob"] = listCronJob.Name
+		existingCronJob.Labels["listcronjob.batchops.io/name"] = listCronJob.Name
 		// Force a new revision by updating the template
 		existingCronJob.Spec.JobTemplate.Spec.Template.ObjectMeta.Annotations = map[string]string{
 			"configmap-version": jobCm.ResourceVersion,

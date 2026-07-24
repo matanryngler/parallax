@@ -28,8 +28,8 @@ import (
 )
 
 var (
-	postgresCmd *exec.Cmd
-	mockApiCmd  *exec.Cmd
+	postgresCmd *utils.PortForwardProcess
+	mockApiCmd  *utils.PortForwardProcess
 )
 
 func TestIntegration(t *testing.T) {
@@ -65,11 +65,11 @@ var _ = AfterSuite(func() {
 	By("terminating port-forward processes")
 	if postgresCmd != nil && postgresCmd.Process != nil {
 		_, _ = fmt.Fprintf(GinkgoWriter, "Terminating postgres port-forward (PID: %d)\n", postgresCmd.Process.Pid)
-		_ = postgresCmd.Process.Kill()
+		_ = postgresCmd.Close()
 	}
 	if mockApiCmd != nil && mockApiCmd.Process != nil {
 		_, _ = fmt.Fprintf(GinkgoWriter, "Terminating mock-api port-forward (PID: %d)\n", mockApiCmd.Process.Pid)
-		_ = mockApiCmd.Process.Kill()
+		_ = mockApiCmd.Close()
 	}
 
 	By("cleaning up test namespaces")

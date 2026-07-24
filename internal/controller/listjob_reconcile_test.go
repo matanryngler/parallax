@@ -114,7 +114,9 @@ func TestListJobReconcile_StaticList(t *testing.T) {
 	assert.Equal(t, batchv1.IndexedCompletion, *job.Spec.CompletionMode)
 	assert.Equal(t, int32(3), *job.Spec.Completions)
 	assert.Equal(t, "test-listjob", job.Labels["listjob.batchops.io/name"])
+	assert.Equal(t, "test-listjob", job.Labels["listjob"])
 	assert.Equal(t, "test-listjob", job.Spec.Template.Labels["listjob.batchops.io/name"])
+	assert.Equal(t, "test-listjob", job.Spec.Template.Labels["listjob"])
 	assert.Equal(t, "processor", job.Spec.Template.Labels["app.kubernetes.io/component"])
 	assert.Equal(t, []string{"sh", "-c", ". /shared/env.sh && exec \"$@\"", "--", "echo", "test"}, job.Spec.Template.Spec.Containers[0].Command)
 }

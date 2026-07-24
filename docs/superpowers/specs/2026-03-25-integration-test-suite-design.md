@@ -22,7 +22,7 @@ The workflow will be managed by a shell script (`scripts/test-integration.sh`) t
 
 1.  **Build Phase**:
     - Build Operator image as `parallax:integration`.
-    - Build Mock API server image as `parallax-test-api:integration` (source: `test/local/testdata/api-server/`).
+    - Build Mock API server image as `parallax-test-api:integration` (source: `test/integration/testdata/api-server/`).
 2.  **Setup Phase**:
     - `kind create cluster --name parallax-integration`.
     - `kind load docker-image parallax:integration --name parallax-integration`.

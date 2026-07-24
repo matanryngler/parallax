@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Initialize `test-infra` Helm Chart
+## Task 1: Initialize `test-infra` Helm Chart
 **Files**:
 - Create: `charts/test-infra/Chart.yaml`
 - Create: `charts/test-infra/values.yaml`
@@ -67,7 +67,7 @@ Implement the cluster lifecycle:
 3. `kubectl create namespace parallax-system`.
 4. `helm install parallax-crds ./charts/parallax-crds`.
 5. `helm install parallax ./charts/parallax --namespace parallax-system --set image.repository=parallax --set image.tag=integration --wait`.
-6. `kubectl create configmap postgres-init --from-file=01-init.sql=test/local/testdata/postgres/init.sql`.
+6. `kubectl create configmap postgres-init --from-file=01-init.sql=test/integration/testdata/postgres/init.sql`.
 7. `helm install test-infra ./charts/test-infra --set mockApi.image.repository=parallax-test-api --set mockApi.image.tag=integration --wait`.
 8. `go test -v ./test/integration/...`.
 Use a `trap` to ensure cluster deletion.

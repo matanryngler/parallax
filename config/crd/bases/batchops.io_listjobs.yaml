@@ -5022,6 +5022,7 @@ spec:
                       type: object
                     type: array
                 required:
+                - command
                 - envName
                 - image
                 type: object

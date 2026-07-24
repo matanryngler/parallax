@@ -17,7 +17,6 @@ type JobTemplateSpec struct {
 	// Command is the command to execute in the container.
 	// Overrides the image's default ENTRYPOINT.
 	// Example: ["/bin/sh", "-c", "process-item.sh"]
-	// +optional
 	Command []string `json:"command"`
 
 	// EnvName is the name of the environment variable that will receive the item value.

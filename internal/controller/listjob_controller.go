@@ -212,8 +212,11 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		Resources: listJob.Spec.Template.InitResources,
 	})
 
+	mainCommand := append([]string{"sh", "-c", ". /shared/env.sh && exec \"$@\"", "--"}, listJob.Spec.Template.Command...)
+
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: listJob.Spec.Template.ServiceAccountName,
+		SecurityContext:    listJob.Spec.Template.SecurityContext,
 		ImagePullSecrets:   listJob.Spec.Template.ImagePullSecrets,
 		Tolerations:        listJob.Spec.Template.Tolerations,
 		Affinity:           listJob.Spec.Template.Affinity,
@@ -224,7 +227,7 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				Name:            "main",
 				Image:           listJob.Spec.Template.Image,
 				ImagePullPolicy: listJob.Spec.Template.ImagePullPolicy,
-				Command:         []string{"sh", "-c", ". /shared/env.sh && " + strings.Join(listJob.Spec.Template.Command, " ")},
+				Command:         mainCommand,
 				Resources:       listJob.Spec.Template.Resources,
 				Env:             listJob.Spec.Template.Env,
 				EnvFrom:         listJob.Spec.Template.EnvFrom,
@@ -235,6 +238,16 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		RestartPolicy: corev1.RestartPolicyNever,
 	}
 
+	// Merge the user-supplied labels with controller labels so that both the
+	// Job and the Pods it creates can be selected by their originating ListJob.
+	// Keep the original short label for backwards-compatible selectors.
+	podLabels := make(map[string]string, len(listJob.Spec.Template.Labels)+2)
+	for k, v := range listJob.Spec.Template.Labels {
+		podLabels[k] = v
+	}
+	podLabels["listjob.batchops.io/name"] = listJob.Name
+	podLabels["listjob"] = listJob.Name
+
 	jobSpec := batchv1.JobSpec{
 		Parallelism:             &listJob.Spec.Parallelism,
 		Completions:             &[]int32{int32(len(list))}[0],
@@ -244,7 +257,7 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ActiveDeadlineSeconds:   listJob.Spec.ActiveDeadlineSeconds,
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: listJob.Spec.Template.Labels,
+				Labels: podLabels,
 			},
 			Spec: podSpec,
 		},
@@ -255,7 +268,8 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			Name:      listJob.Name,
 			Namespace: req.Namespace,
 			Labels: map[string]string{
-				"listjob": listJob.Name,
+				"listjob.batchops.io/name": listJob.Name,
+				"listjob":                  listJob.Name,
 			},
 		},
 		Spec: jobSpec,
@@ -268,6 +282,23 @@ func (r *ListJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if !apierrors.IsAlreadyExists(err) {
 			log.Error(err, "Failed to create Job")
 			return ctrl.Result{}, err
+		}
+
+		// Existing Jobs are immutable except for metadata. Add the legacy label so
+		// selectors continue to work across the label-key migration.
+		existingJob := &batchv1.Job{}
+		if err := r.Get(ctx, client.ObjectKey{Name: listJob.Name, Namespace: req.Namespace}, existingJob); err != nil {
+			return ctrl.Result{}, err
+		}
+		if existingJob.Labels == nil {
+			existingJob.Labels = map[string]string{}
+		}
+		if existingJob.Labels["listjob"] != listJob.Name || existingJob.Labels["listjob.batchops.io/name"] != listJob.Name {
+			existingJob.Labels["listjob"] = listJob.Name
+			existingJob.Labels["listjob.batchops.io/name"] = listJob.Name
+			if err := r.Update(ctx, existingJob); err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 	}
 

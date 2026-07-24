@@ -1,0 +1,137 @@
+---
+# Job with Prometheus PushGateway integration
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: monitored-processor
+  namespace: production
+  labels:
+    example: production-patterns
+spec:
+  listSourceRef: production-data
+  parallelism: 3
+
+  template:
+    image: your-registry/processor:v1.2.3
+
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        
+        push_metric() {
+          local metric_name=$1
+          local metric_value=$2
+          cat <<EOF | curl -s --data-binary @- http://prometheus-pushgateway:9091/metrics/job/parallax-job/instance/$JOB_NAME
+        # TYPE $metric_name gauge
+        $metric_name{item="$ITEM",job_index="$JOB_COMPLETION_INDEX"} $metric_value
+        EOF
+        }
+        
+        echo "Processing item: $ITEM"
+        START_TIME=$(date +%s)
+        
+        push_metric "parallax_job_processing_start" "1"
+        
+        # Process item
+        sleep 5
+        
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+        
+        push_metric "parallax_job_processing_duration_seconds" "$DURATION"
+        push_metric "parallax_job_processing_complete" "1"
+        
+        echo "Processing completed in ${DURATION}s"
+
+    envName: ITEM
+
+    env:
+      - name: JOB_COMPLETION_INDEX
+        value: "$(JOB_COMPLETION_INDEX)"
+      - name: JOB_NAME
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.labels['job-name']
+
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "256Mi"
+      limits:
+        cpu: "2000m"
+        memory: "512Mi"
+
+  ttlSecondsAfterFinished: 3600
+
+---
+# Example: Job with structured logging for Loki
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: logging-processor
+  namespace: production
+spec:
+  listSourceRef: production-data
+  parallelism: 2
+
+  template:
+    image: your-registry/processor:v1.2.3
+
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        
+        log_json() {
+          local level=$1
+          local message=$2
+          cat <<EOF
+        {
+          "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)",
+          "level": "$level",
+          "message": "$message",
+          "item": "$ITEM",
+          "job_name": "$JOB_NAME",
+          "job_index": "$JOB_COMPLETION_INDEX",
+          "trace_id": "$TRACE_ID",
+          "environment": "production"
+        }
+        EOF
+        }
+        
+        log_json "INFO" "Starting processing"
+        
+        # Process item
+        if process_item "$ITEM"; then
+          log_json "INFO" "Processing succeeded"
+        else
+          log_json "ERROR" "Processing failed"
+          exit 1
+        fi
+
+    envName: ITEM
+
+    env:
+      - name: JOB_COMPLETION_INDEX
+        value: "$(JOB_COMPLETION_INDEX)"
+      - name: JOB_NAME
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.labels['job-name']
+      - name: TRACE_ID
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.uid
+
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "256Mi"
+      limits:
+        cpu: "2000m"
+        memory: "512Mi"
+
+  ttlSecondsAfterFinished: 3600

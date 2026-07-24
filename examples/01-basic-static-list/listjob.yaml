@@ -1,0 +1,47 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: basic-processor
+  labels:
+    example: basic-static-list
+spec:
+  # Reference the ListSource
+  listSourceRef: basic-list
+
+  # Run up to 2 jobs in parallel
+  parallelism: 2
+
+  # Job template - defines what each job does
+  template:
+    # Container image
+    image: alpine:3.19
+
+    # Command to execute
+    command:
+      - sh
+      - -c
+      - |
+        echo "Processing item: $ITEM"
+        sleep 2
+        echo "Item processed successfully!"
+
+    # Environment variable name for the item
+    envName: ITEM
+
+    # Resource limits
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+      limits:
+        cpu: "200m"
+        memory: "128Mi"
+
+  # Clean up completed jobs after 1 hour
+  ttlSecondsAfterFinished: 3600
+
+  # Retry failed jobs
+  backoffLimit: 3
+
+  # Kill jobs running longer than 10 minutes
+  activeDeadlineSeconds: 600

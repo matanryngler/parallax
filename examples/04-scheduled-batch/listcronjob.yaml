@@ -1,0 +1,88 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListCronJob
+metadata:
+  name: report-generator
+  labels:
+    example: scheduled-batch
+spec:
+  # Cron schedule: Run every 5 minutes (for demo purposes)
+  schedule: "*/5 * * * *"
+
+  # Reference the ListSource
+  listSourceRef: report-data
+
+  # Maximum number of jobs to run in parallel per schedule
+  parallelism: 2
+
+  # Concurrency policy
+  concurrencyPolicy: Forbid
+
+  # Skip runs if they can't start within 5 minutes
+  startingDeadlineSeconds: 300
+
+  # Keep last 3 successful runs
+  successfulJobsHistoryLimit: 3
+
+  # Keep last 1 failed run
+  failedJobsHistoryLimit: 1
+
+  # Set to true to pause scheduling
+  suspend: false
+
+  # Job template
+  template:
+    image: alpine:3.19
+
+    command:
+      - sh
+      - -c
+      - |
+        echo "========================================="
+        echo "Report Generation Job"
+        echo "Report: $REPORT_NAME"
+        echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+        echo "Job index: $JOB_COMPLETION_INDEX"
+        echo "========================================="
+
+        # Step 1: Prepare report data
+        echo "Step 1: Gathering data for $REPORT_NAME..."
+        sleep 2
+
+        # Step 2: Generate report
+        echo "Step 2: Generating $REPORT_NAME..."
+        sleep 3
+
+        # Step 3: Publish report
+        echo "Step 3: Publishing $REPORT_NAME..."
+        sleep 1
+
+        # Success
+        echo "✓ Successfully generated report: $REPORT_NAME"
+        echo "========================================="
+
+    envName: REPORT_NAME
+
+    env:
+      - name: JOB_COMPLETION_INDEX
+        value: "$(JOB_COMPLETION_INDEX)"
+      - name: OUTPUT_FORMAT
+        value: "pdf"
+      - name: REPORT_VERSION
+        value: "v1"
+
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+
+  # Clean up completed jobs after 30 minutes
+  ttlSecondsAfterFinished: 1800
+
+  # Retry failed jobs up to 2 times
+  backoffLimit: 2
+
+  # Kill jobs running longer than 10 minutes
+  activeDeadlineSeconds: 600

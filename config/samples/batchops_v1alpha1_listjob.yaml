@@ -6,4 +6,149 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: listjob-sample
 spec:
-  # TODO(user): Add fields here
+  # Reference to a ListSource (alternative: use staticList)
+  listSourceRef: listsource-sample
+
+  # Maximum number of jobs to run in parallel
+  parallelism: 3
+
+  # Job template configuration
+  template:
+    # Container image to run
+    image: alpine:3.19
+
+    # Command to execute (overrides image entrypoint)
+    command:
+      - sh
+      - -c
+      - |
+        echo "Processing item: $ITEM"
+        sleep 2
+        echo "Item $ITEM processed successfully"
+
+    # Name of the environment variable that receives the item value
+    envName: ITEM
+
+    # Additional environment variables
+    env:
+      - name: LOG_LEVEL
+        value: info
+      - name: ENVIRONMENT
+        value: development
+
+    # Resource requests and limits (recommended for production)
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+
+  # Clean up completed jobs after 1 hour
+  ttlSecondsAfterFinished: 3600
+
+  # Retry failed jobs up to 3 times
+  backoffLimit: 3
+
+  # Kill jobs that run longer than 10 minutes
+  activeDeadlineSeconds: 600
+
+---
+# Example with static list (without ListSource reference)
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: listjob-static-sample
+spec:
+  # Static list of items (alternative to listSourceRef)
+  staticList:
+    - task-alpha
+    - task-beta
+    - task-gamma
+
+  parallelism: 2
+
+  template:
+    image: busybox:1.36
+    command:
+      - sh
+      - -c
+      - echo "Processing $TASK_NAME"
+    envName: TASK_NAME
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+      limits:
+        cpu: "200m"
+        memory: "128Mi"
+
+  ttlSecondsAfterFinished: 300
+
+---
+# Example with advanced configuration
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: listjob-advanced-sample
+spec:
+  listSourceRef: listsource-sample
+  parallelism: 5
+
+  template:
+    image: myregistry/processor:v1.2.3
+    imagePullPolicy: IfNotPresent
+
+    # Use secrets for image pull
+    imagePullSecrets:
+      - name: registry-credentials
+
+    command:
+      - /app/processor
+      - --verbose
+
+    envName: ITEM_ID
+
+    # Load additional config from ConfigMap
+    envFrom:
+      - configMapRef:
+          name: app-config
+
+    # Use a specific service account
+    serviceAccountName: parallax-job-runner
+
+    # Add custom labels
+    labels:
+      team: platform
+      cost-center: engineering
+
+    # Mount volumes
+    volumes:
+      - name: cache
+        emptyDir:
+          sizeLimit: 1Gi
+
+    volumeMounts:
+      - name: cache
+        mountPath: /cache
+
+    # Resource configuration
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "2000m"
+        memory: "1Gi"
+
+    # Node affinity for spot instances
+    tolerations:
+      - key: spot-instance
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
+
+  ttlSecondsAfterFinished: 7200
+  backoffLimit: 2
+  activeDeadlineSeconds: 3600

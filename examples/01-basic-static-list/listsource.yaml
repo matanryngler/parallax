@@ -1,0 +1,18 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListSource
+metadata:
+  name: basic-list
+  labels:
+    example: basic-static-list
+spec:
+  # Type: static list (no external data source)
+  type: static
+
+  # Static list of items to process
+  staticList:
+    - alice
+    - bob
+    - charlie
+
+  # No refresh needed for static lists (set to 0)
+  intervalSeconds: 0

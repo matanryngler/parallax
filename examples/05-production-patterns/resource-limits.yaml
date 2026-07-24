@@ -1,0 +1,96 @@
+---
+# Example: Production ListJob with proper resource configuration
+apiVersion: batchops.io/v1alpha1
+kind: ListSource
+metadata:
+  name: production-data
+  namespace: production
+  labels:
+    environment: production
+    example: production-patterns
+spec:
+  type: api
+  intervalSeconds: 300
+  api:
+    url: https://api.example.com/v1/items
+    headers:
+      Accept: application/json
+    auth:
+      type: bearer
+      secretRef:
+        name: api-credentials
+        key: token
+    jsonPath: "$.items[*].id"
+
+---
+apiVersion: batchops.io/v1alpha1
+kind: ListJob
+metadata:
+  name: production-processor
+  namespace: production
+  labels:
+    environment: production
+    example: production-patterns
+spec:
+  listSourceRef: production-data
+  parallelism: 5
+
+  template:
+    image: your-registry/processor:v1.2.3
+    imagePullPolicy: IfNotPresent
+
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        
+        log() {
+          echo "{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"level\":\"$1\",\"message\":\"$2\",\"item\":\"$ITEM\",\"trace_id\":\"$TRACE_ID\"}"
+        }
+        
+        cleanup() {
+          log "INFO" "Received shutdown signal, cleaning up"
+          exit 0
+        }
+        trap cleanup TERM INT
+        
+        log "INFO" "Starting processing"
+        timeout 1500 process_item "$ITEM" || {
+          log "ERROR" "Processing timeout exceeded"
+          exit 1
+        }
+        log "INFO" "Processing completed successfully"
+
+    envName: ITEM
+
+    env:
+      - name: JOB_COMPLETION_INDEX
+        value: "$(JOB_COMPLETION_INDEX)"
+      - name: TRACE_ID
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.uid
+      - name: ENVIRONMENT
+        value: "production"
+      - name: API_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: api-credentials
+            key: token
+
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "256Mi"
+      limits:
+        cpu: "2000m"
+        memory: "512Mi"
+
+    labels:
+      team: platform
+      cost-center: engineering
+
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 3
+  activeDeadlineSeconds: 1800

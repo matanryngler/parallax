@@ -17,7 +17,18 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ListCronJob is the Schema for the listcronjobs API.
+        description: "ListCronJob is a Kubernetes custom resource that schedules ListJobs
+          to run on a cron schedule.\nCombines standard cron scheduling with parallel
+          batch processing from ListJobs.\n\nThe controller:\n 1. Monitors the schedule
+          and triggers at specified times\n 2. Creates a ListJob when the schedule
+          fires\n 3. The ListJob fetches fresh data from the ListSource\n 4. Jobs
+          run in parallel to process items\n 5. History is maintained according to
+          HistoryLimit settings\n\nSimilar to Kubernetes CronJob but creates ListJobs
+          instead of regular Jobs.\n\nExample usage:\n\n\tapiVersion: batchops.example.com/v1alpha1\n\tkind:
+          ListCronJob\n\tmetadata:\n\t  name: daily-report\n\tspec:\n\t  schedule:
+          \"0 0 * * *\"  # Daily at midnight\n\t  concurrencyPolicy: Forbid\n\t  listSourceRef:
+          report-data\n\t  parallelism: 5\n\t  template:\n\t    image: myapp/reporter:v1\n\t
+          \   command: [\"generate-report.sh\"]\n\t    envName: REPORT_ID"
         properties:
           apiVersion:
             description: |-
@@ -37,48 +48,116 @@ spec:
           metadata:
             type: object
           spec:
-            description: ListCronJobSpec defines the desired state of ListCronJob.
+            description: |-
+              Spec defines the desired state of the ListCronJob.
+              Specifies scheduling and job configuration.
             properties:
               activeDeadlineSeconds:
+                description: |-
+                  ActiveDeadlineSeconds is the maximum duration (in seconds) for each Job.
+                  Jobs are terminated if they run longer than this limit.
+                  Applies to Jobs created by each scheduled run.
+                  Example: 3600 for 1 hour maximum per run.
                 format: int64
                 type: integer
               backoffLimit:
+                description: |-
+                  BackoffLimit specifies the number of retries before marking a Job as failed.
+                  Applies to Jobs created by each scheduled run.
+                  Default: 6 (Kubernetes default) if not specified.
                 format: int32
                 type: integer
               concurrencyPolicy:
                 default: Forbid
                 description: |-
-                  ConcurrencyPolicy describes how the job will be handled.
-                  Only one of the following concurrent policies may be specified.
-                  If none of the following policies is specified, the default one
-                  is AllowConcurrent.
+                  ConcurrencyPolicy specifies how to handle concurrent executions.
+                  Valid values:
+                    - Allow: Multiple ListJobs can run simultaneously (default if not specified)
+                    - Forbid: Skip new run if previous run is still active
+                    - Replace: Cancel current run and start new one immediately
+                  Default: Forbid (safer for most use cases to prevent overlapping runs).
                 type: string
               failedJobsHistoryLimit:
+                description: |-
+                  FailedJobsHistoryLimit is the number of failed ListJobs to retain.
+                  Older failed runs are automatically deleted.
+                  Default: 1 if not specified.
+                  Increase for troubleshooting repeated failures.
                 format: int32
                 type: integer
               listSourceRef:
+                description: |-
+                  ListSourceRef is the name of the ListSource to get items from.
+                  The ListSource must exist in the same namespace.
+                  Mutually exclusive with StaticList - use one or the other.
+                  The data from the ListSource is fetched fresh on each scheduled run.
                 type: string
               parallelism:
+                description: |-
+                  Parallelism specifies the maximum number of jobs to run concurrently per schedule.
+                  Controls resource consumption for each batch run.
+                  Example: 5 means up to 5 items are processed in parallel during each run.
+                  Required field. Minimum value: 1.
                 format: int32
+                minimum: 1
                 type: integer
               schedule:
+                description: |-
+                  Schedule defines when to run the job using cron syntax.
+                  Format: "minute hour day month dayOfWeek" (standard cron format).
+                  Examples:
+                    - "0 * * * *": Every hour
+                    - "*/5 * * * *": Every 5 minutes
+                    - "0 0 * * *": Daily at midnight UTC
+                    - "0 2 * * 0": Weekly on Sunday at 2 AM UTC
+                    - "0 0 1 * *": Monthly on the 1st at midnight UTC
+                  Required field. Use crontab.guru to validate expressions.
                 type: string
               startingDeadlineSeconds:
+                description: |-
+                  StartingDeadlineSeconds is the deadline in seconds for starting a missed job.
+                  If a job misses its scheduled time (e.g., scheduler was down), it will only start
+                  if it can begin within this deadline. Missed jobs beyond this deadline are skipped.
+                  Example: 300 means a job must start within 5 minutes of its scheduled time.
+                  If not specified, missed jobs can start at any time.
                 format: int64
                 type: integer
               staticList:
+                description: |-
+                  StaticList is a hardcoded list of items to process.
+                  Mutually exclusive with ListSourceRef - use one or the other.
+                  The same static list is used for every scheduled run.
                 items:
                   type: string
                 type: array
               successfulJobsHistoryLimit:
+                description: |-
+                  SuccessfulJobsHistoryLimit is the number of successful ListJobs to retain.
+                  Older successful runs are automatically deleted to prevent clutter.
+                  Default: 3 if not specified.
+                  Set to 0 to delete successful jobs immediately.
+                  Set higher (e.g., 10) for debugging or audit trails.
                 format: int32
                 type: integer
               suspend:
+                description: |-
+                  Suspend tells the controller to suspend subsequent runs.
+                  Existing active runs are not affected.
+                  Useful for maintenance windows or temporarily disabling scheduled jobs.
+                  Set to true to pause scheduling, false to resume.
+                  Default: false (scheduling active).
                 type: boolean
               template:
+                description: |-
+                  Template defines the Job pod specification for processing items.
+                  Each scheduled run creates Jobs using this template.
+                  Required field.
                 properties:
                   affinity:
-                    description: Affinity is a group of affinity scheduling rules.
+                    description: |-
+                      Affinity defines pod scheduling constraints (node affinity, pod affinity/anti-affinity).
+                      Use to control pod placement across nodes or in relation to other pods.
+                      Example: Spreading jobs across availability zones.
                     properties:
                       nodeAffinity:
                         description: Describes node affinity scheduling rules for
@@ -1005,10 +1084,18 @@ spec:
                         type: object
                     type: object
                   command:
+                    description: |-
+                      Command is the command to execute in the container.
+                      Overrides the image's default ENTRYPOINT.
+                      Example: ["/bin/sh", "-c", "process-item.sh"]
                     items:
                       type: string
                     type: array
                   env:
+                    description: |-
+                      Env is a list of additional environment variables for the container.
+                      These are added alongside the item environment variable.
+                      Standard Kubernetes EnvVar format with support for valueFrom.
                     items:
                       description: EnvVar represents an environment variable present
                         in a Container.
@@ -1128,6 +1215,9 @@ spec:
                       type: object
                     type: array
                   envFrom:
+                    description: |-
+                      EnvFrom sources to populate environment variables in the container.
+                      Allows loading all keys from ConfigMaps or Secrets as environment variables.
                     items:
                       description: EnvFromSource represents the source of a set of
                         ConfigMaps
@@ -1173,14 +1263,29 @@ spec:
                       type: object
                     type: array
                   envName:
+                    description: |-
+                      EnvName is the name of the environment variable that will receive the item value.
+                      The controller injects this environment variable with the item to process.
+                      Default: "ITEM" if not specified.
+                      Example: "CUSTOMER_ID", "FILE_PATH", "ORDER_ID"
                     type: string
                   image:
+                    description: |-
+                      Image is the container image to run for processing each item.
+                      Should include the registry and tag for reproducibility.
+                      Example: "myregistry/processor:v1.2.3"
+                      Required field.
                     type: string
                   imagePullPolicy:
-                    description: PullPolicy describes a policy for if/when to pull
-                      a container image
+                    description: |-
+                      ImagePullPolicy specifies when to pull the container image.
+                      Valid values: Always, Never, IfNotPresent.
+                      Default: IfNotPresent for tagged images, Always for :latest.
                     type: string
                   imagePullSecrets:
+                    description: |-
+                      ImagePullSecrets are references to secrets for pulling images from private registries.
+                      Required for private Docker registries.
                     items:
                       description: |-
                         LocalObjectReference contains enough information to let you locate the
@@ -1199,6 +1304,10 @@ spec:
                       x-kubernetes-map-type: atomic
                     type: array
                   initContainers:
+                    description: |-
+                      InitContainers are containers that run before the main container.
+                      Common uses: setup tasks, waiting for dependencies, downloading data.
+                      Init containers run sequentially and must complete successfully.
                     items:
                       description: A single application container that you want to
                         run within a pod.
@@ -2630,12 +2739,17 @@ spec:
                       type: object
                     type: array
                   initImage:
-                    description: 'InitImage is the container image to use for the
-                      internal parallax-init container (default: busybox:1.36)'
+                    description: |-
+                      InitImage is the container image to use for the internal parallax-init container.
+                      This init container prepares the item environment variable.
+                      Default: "busybox:1.36" if not specified.
+                      Only override if you need a specific init container image.
                     type: string
                   initResources:
-                    description: InitResources are the resource requirements for the
-                      internal parallax-init container
+                    description: |-
+                      InitResources are the resource requirements for the internal parallax-init container.
+                      Default: minimal resources (10m CPU, 10Mi memory) if not specified.
+                      Increase if the init container performs complex setup.
                     properties:
                       claims:
                         description: |-
@@ -2696,8 +2810,15 @@ spec:
                   labels:
                     additionalProperties:
                       type: string
+                    description: |-
+                      Labels are additional labels to apply to Job pods.
+                      Useful for monitoring, cost tracking, and service mesh integration.
+                      These are merged with controller-managed labels.
                     type: object
                   ports:
+                    description: |-
+                      Ports are network ports to expose from the container.
+                      Typically not needed for batch jobs, but useful for debugging or metrics.
                     items:
                       description: ContainerPort represents a network port in a single
                         container.
@@ -2736,8 +2857,10 @@ spec:
                       type: object
                     type: array
                   resources:
-                    description: ResourceRequirements describes the compute resource
-                      requirements.
+                    description: |-
+                      Resources defines CPU and memory resource requests and limits.
+                      Important: Always set requests and limits in production to ensure proper scheduling.
+                      Example: requests: {cpu: "500m", memory: "256Mi"}, limits: {cpu: "2", memory: "512Mi"}
                     properties:
                       claims:
                         description: |-
@@ -2795,9 +2918,251 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  securityContext:
+                    description: |-
+                      SecurityContext defines the security settings for the pod.
+                      Includes runAsUser, runAsGroup, fsGroup, etc.
+                    properties:
+                      appArmorProfile:
+                        description: |-
+                          appArmorProfile is the AppArmor options to use by the containers in this pod.
+                          Note that this field cannot be set when spec.os.name is windows.
+                        properties:
+                          localhostProfile:
+                            description: |-
+                              localhostProfile indicates a profile loaded on the node that should be used.
+                              The profile must be preconfigured on the node to work.
+                              Must match the loaded name of the profile.
+                              Must be set if and only if type is "Localhost".
+                            type: string
+                          type:
+                            description: |-
+                              type indicates which kind of AppArmor profile will be applied.
+                              Valid options are:
+                                Localhost - a profile pre-loaded on the node.
+                                RuntimeDefault - the container runtime's default profile.
+                                Unconfined - no AppArmor enforcement.
+                            type: string
+                        required:
+                        - type
+                        type: object
+                      fsGroup:
+                        description: |-
+                          A special supplemental group that applies to all containers in a pod.
+                          Some volume types allow the Kubelet to change the ownership of that volume
+                          to be owned by the pod:
+
+                          1. The owning GID will be the FSGroup
+                          2. The setgid bit is set (new files created in the volume will be owned by FSGroup)
+                          3. The permission bits are OR'd with rw-rw----
+
+                          If unset, the Kubelet will not modify the ownership and permissions of any volume.
+                          Note that this field cannot be set when spec.os.name is windows.
+                        format: int64
+                        type: integer
+                      fsGroupChangePolicy:
+                        description: |-
+                          fsGroupChangePolicy defines behavior of changing ownership and permission of the volume
+                          before being exposed inside Pod. This field will only apply to
+                          volume types which support fsGroup based ownership(and permissions).
+                          It will have no effect on ephemeral volume types such as: secret, configmaps
+                          and emptydir.
+                          Valid values are "OnRootMismatch" and "Always". If not specified, "Always" is used.
+                          Note that this field cannot be set when spec.os.name is windows.
+                        type: string
+                      runAsGroup:
+                        description: |-
+                          The GID to run the entrypoint of the container process.
+                          Uses runtime default if unset.
+                          May also be set in SecurityContext.  If set in both SecurityContext and
+                          PodSecurityContext, the value specified in SecurityContext takes precedence
+                          for that container.
+                          Note that this field cannot be set when spec.os.name is windows.
+                        format: int64
+                        type: integer
+                      runAsNonRoot:
+                        description: |-
+                          Indicates that the container must run as a non-root user.
+                          If true, the Kubelet will validate the image at runtime to ensure that it
+                          does not run as UID 0 (root) and fail to start the container if it does.
+                          If unset or false, no such validation will be performed.
+                          May also be set in SecurityContext.  If set in both SecurityContext and
+                          PodSecurityContext, the value specified in SecurityContext takes precedence.
+                        type: boolean
+                      runAsUser:
+                        description: |-
+                          The UID to run the entrypoint of the container process.
+                          Defaults to user specified in image metadata if unspecified.
+                          May also be set in SecurityContext.  If set in both SecurityContext and
+                          PodSecurityContext, the value specified in SecurityContext takes precedence
+                          for that container.
+                          Note that this field cannot be set when spec.os.name is windows.
+                        format: int64
+                        type: integer
+                      seLinuxChangePolicy:
+                        description: |-
+                          seLinuxChangePolicy defines how the container's SELinux label is applied to all volumes used by the Pod.
+                          It has no effect on nodes that do not support SELinux or to volumes does not support SELinux.
+                          Valid values are "MountOption" and "Recursive".
+
+                          "Recursive" means relabeling of all files on all Pod volumes by the container runtime.
+                          This may be slow for large volumes, but allows mixing privileged and unprivileged Pods sharing the same volume on the same node.
+
+                          "MountOption" mounts all eligible Pod volumes with `-o context` mount option.
+                          This requires all Pods that share the same volume to use the same SELinux label.
+                          It is not possible to share the same volume among privileged and unprivileged Pods.
+                          Eligible volumes are in-tree FibreChannel and iSCSI volumes, and all CSI volumes
+                          whose CSI driver announces SELinux support by setting spec.seLinuxMount: true in their
+                          CSIDriver instance. Other volumes are always re-labelled recursively.
+                          "MountOption" value is allowed only when SELinuxMount feature gate is enabled.
+
+                          If not specified and SELinuxMount feature gate is enabled, "MountOption" is used.
+                          If not specified and SELinuxMount feature gate is disabled, "MountOption" is used for ReadWriteOncePod volumes
+                          and "Recursive" for all other volumes.
+
+                          This field affects only Pods that have SELinux label set, either in PodSecurityContext or in SecurityContext of all containers.
+
+                          All Pods that use the same volume should use the same seLinuxChangePolicy, otherwise some pods can get stuck in ContainerCreating state.
+                          Note that this field cannot be set when spec.os.name is windows.
+                        type: string
+                      seLinuxOptions:
+                        description: |-
+                          The SELinux context to be applied to all containers.
+                          If unspecified, the container runtime will allocate a random SELinux context for each
+                          container.  May also be set in SecurityContext.  If set in
+                          both SecurityContext and PodSecurityContext, the value specified in SecurityContext
+                          takes precedence for that container.
+                          Note that this field cannot be set when spec.os.name is windows.
+                        properties:
+                          level:
+                            description: Level is SELinux level label that applies
+                              to the container.
+                            type: string
+                          role:
+                            description: Role is a SELinux role label that applies
+                              to the container.
+                            type: string
+                          type:
+                            description: Type is a SELinux type label that applies
+                              to the container.
+                            type: string
+                          user:
+                            description: User is a SELinux user label that applies
+                              to the container.
+                            type: string
+                        type: object
+                      seccompProfile:
+                        description: |-
+                          The seccomp options to use by the containers in this pod.
+                          Note that this field cannot be set when spec.os.name is windows.
+                        properties:
+                          localhostProfile:
+                            description: |-
+                              localhostProfile indicates a profile defined in a file on the node should be used.
+                              The profile must be preconfigured on the node to work.
+                              Must be a descending path, relative to the kubelet's configured seccomp profile location.
+                              Must be set if type is "Localhost". Must NOT be set for any other type.
+                            type: string
+                          type:
+                            description: |-
+                              type indicates which kind of seccomp profile will be applied.
+                              Valid options are:
+
+                              Localhost - a profile defined in a file on the node should be used.
+                              RuntimeDefault - the container runtime default profile should be used.
+                              Unconfined - no profile should be applied.
+                            type: string
+                        required:
+                        - type
+                        type: object
+                      supplementalGroups:
+                        description: |-
+                          A list of groups applied to the first process run in each container, in
+                          addition to the container's primary GID and fsGroup (if specified).  If
+                          the SupplementalGroupsPolicy feature is enabled, the
+                          supplementalGroupsPolicy field determines whether these are in addition
+                          to or instead of any group memberships defined in the container image.
+                          If unspecified, no additional groups are added, though group memberships
+                          defined in the container image may still be used, depending on the
+                          supplementalGroupsPolicy field.
+                          Note that this field cannot be set when spec.os.name is windows.
+                        items:
+                          format: int64
+                          type: integer
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      supplementalGroupsPolicy:
+                        description: |-
+                          Defines how supplemental groups of the first container processes are calculated.
+                          Valid values are "Merge" and "Strict". If not specified, "Merge" is used.
+                          (Alpha) Using the field requires the SupplementalGroupsPolicy feature gate to be enabled
+                          and the container runtime must implement support for this feature.
+                          Note that this field cannot be set when spec.os.name is windows.
+                        type: string
+                      sysctls:
+                        description: |-
+                          Sysctls hold a list of namespaced sysctls used for the pod. Pods with unsupported
+                          sysctls (by the container runtime) might fail to launch.
+                          Note that this field cannot be set when spec.os.name is windows.
+                        items:
+                          description: Sysctl defines a kernel parameter to be set
+                          properties:
+                            name:
+                              description: Name of a property to set
+                              type: string
+                            value:
+                              description: Value of a property to set
+                              type: string
+                          required:
+                          - name
+                          - value
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      windowsOptions:
+                        description: |-
+                          The Windows specific settings applied to all containers.
+                          If unspecified, the options within a container's SecurityContext will be used.
+                          If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence.
+                          Note that this field cannot be set when spec.os.name is linux.
+                        properties:
+                          gmsaCredentialSpec:
+                            description: |-
+                              GMSACredentialSpec is where the GMSA admission webhook
+                              (https://github.com/kubernetes-sigs/windows-gmsa) inlines the contents of the
+                              GMSA credential spec named by the GMSACredentialSpecName field.
+                            type: string
+                          gmsaCredentialSpecName:
+                            description: GMSACredentialSpecName is the name of the
+                              GMSA credential spec to use.
+                            type: string
+                          hostProcess:
+                            description: |-
+                              HostProcess determines if a container should be run as a 'Host Process' container.
+                              All of a Pod's containers must have the same effective HostProcess value
+                              (it is not allowed to have a mix of HostProcess containers and non-HostProcess containers).
+                              In addition, if HostProcess is true then HostNetwork must also be set to true.
+                            type: boolean
+                          runAsUserName:
+                            description: |-
+                              The UserName in Windows to run the entrypoint of the container process.
+                              Defaults to the user specified in image metadata if unspecified.
+                              May also be set in PodSecurityContext. If set in both SecurityContext and
+                              PodSecurityContext, the value specified in SecurityContext takes precedence.
+                            type: string
+                        type: object
+                    type: object
                   serviceAccountName:
+                    description: |-
+                      ServiceAccountName is the name of the ServiceAccount to use for the pod.
+                      Controls the permissions available to the job pods.
+                      Default: "default" if not specified.
                     type: string
                   tolerations:
+                    description: |-
+                      Tolerations allow pods to schedule onto nodes with matching taints.
+                      Use for dedicated node pools, spot instances, or special hardware.
+                      Example: Tolerating spot instance taints for cost savings.
                     items:
                       description: |-
                         The pod this Toleration is attached to tolerates any taint that matches
@@ -2836,6 +3201,10 @@ spec:
                       type: object
                     type: array
                   volumeMounts:
+                    description: |-
+                      VolumeMounts are mount points for volumes in the container.
+                      Must reference volumes defined in the Volumes field.
+                      Example: {name: "data", mountPath: "/data"}
                     items:
                       description: VolumeMount describes a mounting of a Volume within
                         a container.
@@ -2899,6 +3268,10 @@ spec:
                       type: object
                     type: array
                   volumes:
+                    description: |-
+                      Volumes are volumes to attach to the pod.
+                      Common uses: ConfigMaps, Secrets, PersistentVolumes, emptyDir.
+                      Each volume must be mounted by VolumeMounts to be accessible.
                     items:
                       description: Volume represents a named volume in a pod that
                         may be accessed by any container in the pod.
@@ -4694,6 +5067,11 @@ spec:
                 - image
                 type: object
               ttlSecondsAfterFinished:
+                description: |-
+                  TTLSecondsAfterFinished is the time in seconds to keep completed/failed Jobs.
+                  After this duration, Jobs and their pods are automatically deleted.
+                  Applies to Jobs created by each scheduled run.
+                  Example: 3600 for 1 hour, 86400 for 24 hours.
                 format: int32
                 type: integer
             required:
@@ -4702,9 +5080,16 @@ spec:
             - template
             type: object
           status:
-            description: ListCronJobStatus defines the observed state of ListCronJob.
+            description: |-
+              Status represents the observed state of the ListCronJob.
+              Updated by the controller with scheduling information.
             properties:
               active:
+                description: |-
+                  Active lists currently running ListJobs created by this CronJob.
+                  Each reference points to a ListJob that hasn't completed yet.
+                  Empty if no jobs are currently running.
+                  Use to monitor concurrent executions and enforce ConcurrencyPolicy.
                 items:
                   description: ObjectReference contains enough information to let
                     you inspect or modify the referred object.
@@ -4751,6 +5136,11 @@ spec:
                   x-kubernetes-map-type: atomic
                 type: array
               conditions:
+                description: |-
+                  Conditions represent the latest available observations of the ListCronJob's state.
+                  Standard condition types:
+                    - Scheduled: True if the CronJob is being scheduled normally
+                    - Suspended: True if the CronJob is suspended
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -4810,12 +5200,19 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               lastScheduleTime:
+                description: |-
+                  LastScheduleTime is the timestamp of the last time a ListJob was created.
+                  Updated each time the schedule triggers and a new run is created.
+                  Use to verify the CronJob is firing on schedule.
+                  If this timestamp is old, check if the CronJob is suspended or has errors.
                 format: date-time
                 type: string
               lastSkipEventUID:
                 description: |-
-                  LastSkipEventUID tracks the UID of the last JobAlreadyActive event we've processed
-                  to avoid duplicate logging of the same skip event
+                  LastSkipEventUID tracks the UID of the last JobAlreadyActive event processed.
+                  Used internally by the controller to avoid duplicate logging of skip events.
+                  When ConcurrencyPolicy is Forbid and a job is already active, the controller
+                  logs a skip event once per occurrence.
                 type: string
             type: object
         type: object

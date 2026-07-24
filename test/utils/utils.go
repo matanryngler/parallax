@@ -19,10 +19,13 @@ package utils
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 )
@@ -232,6 +235,70 @@ func WaitForDeployment(deploymentName, namespace string, timeoutSecs int) error 
 	return nil
 }
 
+// PortForwardProcess owns a background kubectl port-forward process.
+type PortForwardProcess struct {
+	*exec.Cmd
+	done <-chan error
+}
+
+// Close terminates the port-forward and waits for its process to be reaped.
+func (p *PortForwardProcess) Close() error {
+	if p == nil || p.Cmd == nil {
+		return nil
+	}
+	if p.Process != nil {
+		if err := p.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return fmt.Errorf("failed to stop port-forward: %w", err)
+		}
+	}
+	<-p.done
+	return nil
+}
+
+// PortForward starts a background kubectl port-forward process and waits until
+// its local TCP listener is ready to receive connections.
+func PortForward(namespace, service string, localPort, remotePort int) (*PortForwardProcess, error) {
+	_, _ = fmt.Fprintf(GinkgoWriter, "🔌 Starting port-forward for service %s in namespace %s: %d:%d\n", service, namespace, localPort, remotePort)
+
+	cmd := exec.Command("kubectl", "port-forward", fmt.Sprintf("svc/%s", service), fmt.Sprintf("%d:%d", localPort, remotePort), "-n", namespace)
+
+	// Ensure we run from project root and capture output
+	dir, _ := GetProjectDir()
+	cmd.Dir = dir
+	cmd.Stdout = GinkgoWriter
+	cmd.Stderr = GinkgoWriter
+
+	// Start the command in the background
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start port-forward: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	// Wait a brief moment for the port-forward to become active
+	_, _ = fmt.Fprintf(GinkgoWriter, "⏳ Waiting for port-forward to stabilize...\n")
+	time.Sleep(2 * time.Second)
+
+	select {
+	case err := <-done:
+		return nil, fmt.Errorf("port-forward process exited during startup: %w", err)
+	default:
+	}
+
+	address := fmt.Sprintf("127.0.0.1:%d", localPort)
+	conn, err := net.DialTimeout("tcp", address, time.Second)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		<-done
+		return nil, fmt.Errorf("port-forward did not listen on %s: %w", address, err)
+	}
+	_ = conn.Close()
+
+	return &PortForwardProcess{Cmd: cmd, done: done}, nil
+}
+
 // GetDeploymentStatus gets detailed deployment status for debugging
 func GetDeploymentStatus(deploymentName, namespace string) {
 	_, _ = fmt.Fprintf(GinkgoWriter, "🔍 Getting deployment status for %s/%s:\n", namespace, deploymentName)
@@ -296,7 +363,9 @@ func GetProjectDir() (string, error) {
 	if err != nil {
 		return wd, err
 	}
-	wd = strings.Replace(wd, "/test/e2e", "", -1)
+	// Remove common test directory suffixes to get to project root
+	wd = strings.TrimSuffix(wd, "/test/e2e")
+	wd = strings.TrimSuffix(wd, "/test/integration")
 	return wd, nil
 }
 

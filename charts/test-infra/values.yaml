@@ -1,0 +1,11 @@
+postgres:
+  image: postgres:16-alpine
+  password: postgres
+  database: testdb
+  # Note: The postgres-init ConfigMap is created externally by scripts/test-integration.sh
+  # and contains the SQL initialization script for the test database.
+
+mockApi:
+  image:
+    repository: parallax-test-api
+    tag: integration

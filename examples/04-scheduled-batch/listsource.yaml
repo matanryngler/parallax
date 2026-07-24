@@ -1,0 +1,23 @@
+apiVersion: batchops.io/v1alpha1
+kind: ListSource
+metadata:
+  name: report-data
+  labels:
+    example: scheduled-batch
+spec:
+  # Type: static list for this example
+  # In production, this could be 'api' or 'postgresql' to fetch fresh data on each run
+  type: static
+
+  # Static list of reports to generate
+  # Each scheduled run will process these items
+  staticList:
+    - sales-report
+    - inventory-report
+    - customer-report
+    - performance-report
+    - audit-report
+
+  # Set to 0 for static lists (no refresh needed)
+  # For dynamic sources (api/postgresql), set to a refresh interval
+  intervalSeconds: 0
